@@ -1,0 +1,30 @@
+# Personal Quant Lab - 依赖清单
+# Python 3.10+ required
+
+# 数据处理
+pandas>=1.5.0
+numpy>=1.23.0
+
+# 金融数据获取
+yfinance>=0.2.0
+
+# 可视化
+plotly>=5.0.0
+plotly-express>=5.0.0
+
+# Web 框架
+streamlit>=1.28.0
+streamlit-plotly-events>=0.0.6
+
+# 数据序列化
+dataclasses-json>=0.5.7
+
+# 时间处理
+pytz>=2023.3
+
+# 可选依赖（开发和测试）
+# pytest>=7.0
+# pytest-cov>=4.0
+# black>=22.0
+# flake8>=4.0
+# mypy>=0.9

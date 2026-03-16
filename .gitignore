@@ -1,0 +1,87 @@
+# 环境变量
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# 数据目录（可选保留）
+Data_Hub/storage/*.parquet
+Company_KnowledgeBase/
+
+# Streamlit
+.streamlit/
+*.streamlit.run
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+*.log.*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 操作系统相关
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# 项目特定
+test_output/
+*.bak
+.cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Parquet 数据（可选）
+Data_Hub/storage/
+
+# 本地配置
+.localrc
+local_config.py

@@ -10,6 +10,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
 import sys
+import json
+import yfinance as yf
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -26,6 +28,53 @@ from Analytics.reporters.company_info_manager import CompanyInfoManager
 st.set_page_config(page_title="Personal Quant Lab", layout="wide")
 st.title("🔬 个人量化实验室 - 参数化回测系统")
 
+# =========== 记忆系统（保存最好的策略配置） ===========
+memory_file = os.path.join(os.path.dirname(__file__), '..', 'Data_Hub', 'storage', '.strategy_memory.json')
+
+def load_memory():
+    """加载策略记忆"""
+    if os.path.exists(memory_file):
+        try:
+            with open(memory_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_memory(memory):
+    """保存策略记忆"""
+    os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+    with open(memory_file, 'w', encoding='utf-8') as f:
+        json.dump(memory, f, ensure_ascii=False, indent=2)
+
+def update_best_strategy(symbol, strategy_name, params, annual_return):
+    """更新某个标的的最好策略记录"""
+    memory = load_memory()
+    
+    if symbol not in memory:
+        memory[symbol] = {
+            'strategy': strategy_name,
+            'params': params,
+            'annual_return': annual_return,
+            'updated_at': datetime.now().isoformat()
+        }
+    else:
+        # 只有当年化收益率更高时才更新
+        if annual_return > memory[symbol].get('annual_return', -999):
+            memory[symbol] = {
+                'strategy': strategy_name,
+                'params': params,
+                'annual_return': annual_return,
+                'updated_at': datetime.now().isoformat()
+            }
+    
+    save_memory(memory)
+
+def get_best_strategy(symbol):
+    """获取某个标的的最好策略"""
+    memory = load_memory()
+    return memory.get(symbol, None)
+
 # =========== 数据索引 ===========
 storage_dir = os.path.join(os.path.dirname(__file__), '..', 'Data_Hub', 'storage')
 try:
@@ -37,7 +86,84 @@ except FileNotFoundError:
 
 # =========== 侧边栏：基本配置 ===========
 st.sidebar.header("📊 基本配置")
-symbol = st.sidebar.selectbox("选择标的 (Symbol)", available_symbols, index=0)
+
+# 初始化最近下载的标的记录
+if 'recently_downloaded' not in st.session_state:
+    st.session_state.recently_downloaded = None
+
+# =========== 统一的搜索/选择框：selectbox（保留瀑布式搜索） ===========
+# 在选项列表中添加特殊选项 - 放在最上方
+options_with_download = ["➕ 下载新标的"] + available_symbols
+
+# 确定初始选择的索引
+if st.session_state.recently_downloaded and st.session_state.recently_downloaded in available_symbols:
+    # 如果有最近下载的标的，选择它
+    initial_index = available_symbols.index(st.session_state.recently_downloaded) + 1
+else:
+    # 否则选择第一个真实标的
+    initial_index = 1 if len(available_symbols) > 0 else 0
+
+symbol = st.sidebar.selectbox(
+    "🔍 搜索或选择标的",
+    options_with_download,
+    index=initial_index,
+    key="unified_symbol_select",
+    help="输入标的代码搜索，或选择'➕ 下载新标的'来添加新标的"
+)
+
+# 如果选择了非下载选项，清除最近下载标记
+if symbol != "➕ 下载新标的":
+    st.session_state.recently_downloaded = None
+
+# 如果用户选择了"下载新标的"
+if symbol == "➕ 下载新标的":
+    new_symbol = st.sidebar.text_input(
+        "输入标的代码",
+        value="",
+        key="new_symbol_input",
+        placeholder="如: TSLA, NVDA, BTC-USD"
+    ).upper().strip()
+    
+    if new_symbol and st.sidebar.button("📥 下载并保存", key="download_new", use_container_width=True):
+        if new_symbol not in available_symbols:
+            try:
+                with st.spinner(f"⏳ 正在下载 {new_symbol} 数据..."):
+                    # 尝试下载数据
+                    ticker = yf.Ticker(new_symbol)
+                    historical_data = ticker.history(start="2015-01-01", end=datetime.now().date())
+                    
+                    if not historical_data.empty:
+                        # 数据存在，保存为parquet格式
+                        output_path = os.path.join(storage_dir, f"{new_symbol}.parquet")
+                        
+                        # 标准化列名 - 只保留需要的列
+                        required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                        data_to_save = historical_data[required_columns].copy()
+                        data_to_save.columns = ['open', 'high', 'low', 'close', 'volume']
+                        data_to_save.index.name = 'date'
+                        
+                        # 保存
+                        data_to_save.to_parquet(output_path)
+                        
+                        st.sidebar.success(f"✅ {new_symbol} 数据下载成功！")
+                        st.sidebar.info(f"📊 已获取 {len(historical_data)} 条数据")
+                        
+                        # 刷新可用符号列表
+                        available_files = [f for f in os.listdir(storage_dir) if f.endswith('.parquet')]
+                        available_symbols = sorted([f.split('.')[0] for f in available_files])
+                        
+                        # 记录新下载的标的到session_state
+                        st.session_state.recently_downloaded = new_symbol
+                        
+                        st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"❌ 下载失败：{str(e)}")
+    
+    # 如果用户选择了下载选项但没有输入symbol，提示并停止
+    st.warning("⚠️ 请在上方输入标的代码，然后点击'下载并保存'")
+    st.stop()
+
+st.sidebar.divider()
 
 # --- 企业信息卡片 ---
 company_info_manager = CompanyInfoManager()
@@ -109,7 +235,8 @@ with st.sidebar.expander(f"ℹ️ {company_info.get('name', symbol)}", expanded=
     # 现金流指标
     fcf = company_info.get('fcf', 'N/A')
     if fcf and fcf != 'N/A':
-        st.markdown(f"**自由现金流 (FCF)**: ${fcf:,.0f}")
+        fcf_in_millions = fcf / 1_000_000
+        st.markdown(f"**自由现金流 (FCF)**: ${fcf_in_millions:,.1f}M")
     
     # 企业简介（中英双语）
     business_summary_cn = company_info.get('business_summary_cn', '')
@@ -134,11 +261,26 @@ with st.sidebar.expander(f"ℹ️ {company_info.get('name', symbol)}", expanded=
 st.sidebar.divider()
 
 st.sidebar.header("📅 回测时间")
+
+# 动态计算回测开始日期（基于上市日期）
+default_start = datetime(2023, 1, 1)
+ipo_date_str = company_info.get('ipo_date', 'N/A')
+
+if ipo_date_str and ipo_date_str != 'N/A':
+    try:
+        ipo_date = datetime.strptime(ipo_date_str, '%Y-%m-%d')
+        # 如果IPO日期晚于默认日期，使用IPO日期
+        if ipo_date > default_start:
+            default_start = ipo_date
+            st.sidebar.info(f"ℹ️ {symbol} 上市于 {ipo_date_str}，已自动调整回测开始日期")
+    except:
+        pass
+
 col1, col2 = st.sidebar.columns(2)
 with col1:
     start_date = st.date_input(
         "开始日期",
-        value=datetime(2023, 1, 1),
+        value=default_start,
         key="start_date_input"
     )
 with col2:
@@ -190,8 +332,80 @@ if strategy.name == "均线交叉策略":
         step=1
     )
     strategy_params = {"ma_short": ma_short, "ma_long": ma_long}
+
+elif strategy.name == "分歧交易策略（改进版）":
+    # 分歧交易策略参数
+    col_param1, col_param2 = st.sidebar.columns(2)
+    
+    with col_param1:
+        trend_ma = st.slider(
+            "📊 趋势均线周期",
+            min_value=10,
+            max_value=50,
+            value=20,
+            step=1,
+            help="用于判断上升/下降趋势的均线周期"
+        )
+        amplitude_ratio = st.slider(
+            "📈 波幅扩大倍数",
+            min_value=1.1,
+            max_value=2.0,
+            value=1.3,
+            step=0.1,
+            help="B日波幅需要超过A日波幅的倍数"
+        )
+    
+    with col_param2:
+        volume_ratio = st.slider(
+            "📢 成交量倍数",
+            min_value=1.0,
+            max_value=2.0,
+            value=1.2,
+            step=0.1,
+            help="成交量需要超过20日均量的倍数"
+        )
+        atr_period = st.slider(
+            "🎯 ATR周期",
+            min_value=7,
+            max_value=30,
+            value=14,
+            step=1,
+            help="计算平均真实波幅的周期"
+        )
+    
+    col_param3, col_param4 = st.sidebar.columns(2)
+    
+    with col_param3:
+        stop_loss_atr = st.slider(
+            "🛑 止损距离 (ATR倍数)",
+            min_value=1.0,
+            max_value=3.0,
+            value=2.0,
+            step=0.5,
+            help="止损距离 = 进价 ± ATR × 此值"
+        )
+    
+    with col_param4:
+        hold_days = st.slider(
+            "⏱️ 最大持有天数",
+            min_value=1,
+            max_value=20,
+            value=5,
+            step=1,
+            help="超过此天数未平仓则强制平仓"
+        )
+    
+    strategy_params = {
+        "trend_ma": trend_ma,
+        "amplitude_ratio": amplitude_ratio,
+        "volume_ratio": volume_ratio,
+        "atr_period": atr_period,
+        "stop_loss_atr": stop_loss_atr,
+        "hold_days": hold_days
+    }
+
 else:
-    st.sidebar.info("其他策略参数配置待实现")
+    st.sidebar.info("⚠️ 此策略参数配置待实现")
     strategy_params = {}
 
 # =========== 侧边栏：运行回测按钮 ===========
@@ -217,6 +431,11 @@ if run_backtest:
             
             # 保存到会话状态（用于后续展示）
             st.session_state.backtest_result = result
+            
+            # 🧠 更新记忆系统 - 如果年化收益率更高则保存
+            annual_return = result.metrics.get('annual_return', -999)
+            update_best_strategy(symbol, strategy.name, strategy_params, annual_return)
+            
             st.success("✅ 回测完成！")
             
         except Exception as e:
@@ -229,6 +448,21 @@ if hasattr(st.session_state, 'backtest_result') and st.session_state.backtest_re
     
     # --- 关键指标卡片 ---
     st.header("📈 回测结果")
+    
+    # 🧠 显示最佳策略记忆
+    best_strategy = get_best_strategy(symbol)
+    if best_strategy:
+        best_col1, best_col2, best_col3 = st.columns([1, 3, 1])
+        with best_col1:
+            st.metric("💾 最佳策略", best_strategy['strategy'][:15])
+        with best_col2:
+            st.caption(f"年化收益: **{best_strategy['annual_return']:.2%}** | 更新于: {best_strategy['updated_at'][:10]}")
+        with best_col3:
+            if st.button("📌 加载此配置", key="load_best_config", use_container_width=True):
+                # 直接应用最佳配置到参数
+                st.success(f"✅ 已加载最佳配置！")
+                st.info(f"参数：{best_strategy['params']}")
+        st.divider()
     
     # 初始资金和最终资金
     final_equity = result.equity_curve.iloc[-1] if len(result.equity_curve) > 0 else initial_capital

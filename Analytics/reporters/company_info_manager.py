@@ -149,11 +149,38 @@ class CompanyInfoManager:
             'fcf': info.get('freeCashflow', 'N/A'),  # 自由现金流
             'roe': info.get('returnOnEquity', 'N/A'),  # 股东权益回报率
             
+            # IPO日期
+            'ipo_date': self._extract_ipo_date(info),
+            
             'last_updated': datetime.now().isoformat(),
             'source': 'yfinance',
         }
         
         return company_data
+    
+    def _extract_ipo_date(self, info: Dict) -> str:
+        """
+        从info字典中提取IPO日期
+        
+        Args:
+            info: 从yfinance获取的info字典
+            
+        Returns:
+            IPO日期字符串 (YYYY-MM-DD) 或 'N/A'
+        """
+        try:
+            ipo_date = info.get('ipoDate', None)
+            if ipo_date:
+                # 如果是时间戳
+                if isinstance(ipo_date, (int, float)):
+                    ipo_datetime = datetime.fromtimestamp(ipo_date)
+                    return ipo_datetime.strftime('%Y-%m-%d')
+                # 如果已是字符串
+                elif isinstance(ipo_date, str):
+                    return ipo_date[:10]  # 截取YYYY-MM-DD部分
+        except:
+            pass
+        return 'N/A'
     
     def _translate_to_chinese(self, text: str) -> str:
         """

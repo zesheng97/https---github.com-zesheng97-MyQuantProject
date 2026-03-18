@@ -82,6 +82,13 @@ class BacktestEngine:
         end_dt = pd.to_datetime(config.end_date)
         
         if isinstance(data.index, pd.DatetimeIndex):
+            # 移除时区信息以避免时区比较错误
+            if data.index.tz is not None:
+                data.index = data.index.tz_localize(None)
+            if start_dt.tz is not None:
+                start_dt = start_dt.tz_localize(None)
+            if end_dt.tz is not None:
+                end_dt = end_dt.tz_localize(None)
             data = data[(data.index >= start_dt) & (data.index <= end_dt)]
         else:
             raise ValueError("数据必须有 DatetimeIndex（列名为 'date'）")

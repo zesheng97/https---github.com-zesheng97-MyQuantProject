@@ -138,6 +138,8 @@ class BacktestEngine:
         """
         逐日撮合逻辑（整数股交易：按信号全仓买卖，无杠杆、无滑点）
         
+        关键：使用前一日的signal在当日执行交易，避免未来数据泄露
+        
         Args:
             data: 包含 signal 列的数据（1=多头, -1=空头, 0=持币）
             initial_capital: 初始资金
@@ -156,45 +158,52 @@ class BacktestEngine:
         trades = []  # 交易记录
         
         for idx in range(1, len(data)):
-            current_signal = data.iloc[idx]['signal']
+            # ✅ 关键修复：使用前一日的signal在当日执行交易
             prev_signal = data.iloc[idx-1]['signal']
             current_price = data.iloc[idx]['close']
             current_date = data.index[idx]
             
-            # 信号变化时触发交易
-            if current_signal != prev_signal:
-                if current_signal == 1 and shares == 0:
-                    # 买入信号：用所有现金买入尽可能多的整数股
-                    buy_shares = int(cash / current_price)
-                    if buy_shares > 0:
-                        cost = buy_shares * current_price
-                        shares = buy_shares
-                        cash -= cost
-                        trades.append({
-                            'date': current_date,
-                            'action': 'BUY',
-                            'price': current_price,
-                            'shares': buy_shares,
-                            'cost': cost,
-                            'cash_after': cash
-                        })
-                
-                elif current_signal != 1 and shares > 0:
-                    # 卖出信号：卖出全部持仓
-                    revenue = shares * current_price
-                    cost_basis = trades[-1]['cost'] if trades and trades[-1]['action'] == 'BUY' else 0
-                    pnl = revenue - cost_basis
-                    cash += revenue
+            # 基于前一日的signal值（不是变化）来判断交易动作
+            # signal = 1 表示持仓（继续持有）
+            # signal = -1 表示卖出
+            # signal = 0 表示无仓位或不交易
+            
+            # 买入信号（从无仓位进入持仓状态）
+            if prev_signal == 1 and shares == 0:
+                # 买入信号：用所有现金买入尽可能多的整数股
+                buy_shares = int(cash / current_price)
+                if buy_shares > 0:
+                    cost = buy_shares * current_price
+                    shares = buy_shares
+                    cash -= cost
                     trades.append({
                         'date': current_date,
-                        'action': 'SELL',
+                        'action': 'BUY',
                         'price': current_price,
-                        'shares': shares,
-                        'revenue': revenue,
-                        'pnl': pnl,
+                        'shares': buy_shares,
+                        'cost': cost,
                         'cash_after': cash
                     })
-                    shares = 0
+            
+            # 卖出信号（明确的 signal=-1 或从持仓转为非持仓）
+            elif prev_signal == -1 and shares > 0:
+                # 卖出信号：卖出全部持仓
+                revenue = shares * current_price
+                cost_basis = trades[-1]['cost'] if trades and trades[-1]['action'] == 'BUY' else 0
+                pnl = revenue - cost_basis
+                cash += revenue
+                trades.append({
+                    'date': current_date,
+                    'action': 'SELL',
+                    'price': current_price,
+                    'shares': shares,
+                    'revenue': revenue,
+                    'pnl': pnl,
+                    'cash_after': cash
+                })
+                shares = 0
+            
+            # signal=0 或其他值：不交易
             
             # 计算当日账户净值（现金 + 持仓市值）
             current_equity = cash + shares * current_price

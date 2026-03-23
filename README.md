@@ -154,8 +154,12 @@ class BaseStrategy:
 ```
 
 **Built-in Strategies:**
-- `MovingAverageCrossStrategy`: SMA crossover (configurable periods)
-- `XGBoostMLStrategy`: ML-based signal generation with GPU support
+- `MovingAverageCrossStrategy`: Standard SMA crossover logic with configurable short/long periods.
+- `DivergenceStrategy`: Enhanced divergence trading featuring trend filters, relative amplitude requirements, and volume confirmation.
+- `BollingerBandsStrategy`: Mean reversion logic buying at lower bands and selling at upper bands, optimized for daily intervals.
+- `MeanReversionVolatilityStrategy`: **(Enhanced)** KRUS-optimized algorithm using Z-Score, volume spikes, and ATR-based trailing stops to capture major swings while preventing early exits.
+- `Cyclical Strategies`: Specialized suite including `CyclicalTrend`, `MeanReversion`, and `PhaseAlignment` for periodic market behavior.
+- `XGBoostMLStrategy`: Advanced MLOps-ready strategy with feature engineering, GPU acceleration, and a Model Registry for persistence.
 
 ### GUI Features
 
@@ -514,8 +518,12 @@ class BaseStrategy:
 ```
 
 **内置策略:**
-- `MovingAverageCrossStrategy`: SMA均线交叉
-- `XGBoostMLStrategy`: 机器学习信号生成（GPU支持）
+- `MovingAverageCrossStrategy`: 标准简单均线交叉逻辑，支持自定义长短期周期。
+- `DivergenceStrategy`: 增强型分歧交易策略，集成趋势过滤、相对波幅要求及成交量确认机制。
+- `BollingerBandsStrategy`: 布林带回归逻辑，触及下轨买入、上轨卖出，专为日线级别优化。
+- `MeanReversionVolatilityStrategy`: **(增强版)** 针对 KRUS 等高波动标的优化，利用 Z-Score、放量特征及 ATR 移动止盈捕捉主升浪，解决卖出过快问题。
+- `周期性策略系列`: 包含趋势、均值回归及相位对齐策略，用于捕捉市场周期性规律。
+- `XGBoostMLStrategy`: 工业级机器学习策略，支持特征工程、GPU 加速及模型注册中心（Model Registry）管理。
 
 ### GUI功能
 

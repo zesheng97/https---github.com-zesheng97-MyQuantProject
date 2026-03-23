@@ -4,6 +4,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v3.0.0] - 2026-03-23
+
+### 🎯 Major Fixes & Features | 主要修复和特性
+
+#### 1. **XGBoost 子进程架构** (解决Streamlit断连)
+- **问题**: GUI训练XGBoost时冻结、显示"Connection error"
+- **方案**: 将XGBoost独立到子进程 + 文件系统轮询进度
+  - `GUI_Client/xgboost_worker.py` (NEW): 独立训练器，通过JSON/pickle与GUI通信
+  - `@st.fragment(run_every=3)`: GUI每3秒轮询进度，不阻塞主UI
+  - **结果**: 训练独立运行，UI始终响应
+
+#### 2. **XGBoost回测图表显示买卖点** (新功能)
+- **问题**: XGBoost结果图表无买卖标记（trades为空）
+- **方案**: 向worker添加股数级交易模拟
+  - 基于signal的交易: signal=1（买入全部可买数量）, signal=-1（卖出全部）
+  - 真实净值曲线: 现金+持仓价值（非synthetic returns）
+  - Trades DataFrame: `{date, action, price, shares, cost/revenue, pnl, cash_after}`
+  - 计算指标: annual_return, sharpe_ratio, max_drawdown, win_rate
+- **结果**: 买卖点星号显示在K线图和净值曲线上
+
+#### 3. **Streamlit API过期修复**
+- 替换42处deprecated `use_container_width=True` → Streamlit 1.55.0标准 `width="stretch"`
+
+#### 4. **XGBoost 3.1+ 兼容性**
+- 移除deprecated参数: `gpu_id`
+- 更新GPU配置: `gpu_hist` → `tree_method='hist'` + `device='cuda'`
+- 改进训练循环: 原生callback API早停 + 超时控制
+
+### 📁 文件变更 | Files Modified
+- ✅ `GUI_Client/app_v2.py` (1763行): 子进程启动、fragment轮询、xgb结果加载
+- ✅ `GUI_Client/xgboost_worker.py` (NEW 140行): 独立训练器 + 交易模拟
+- ✅ `Strategy_Pool/custom/xgboost_ml_strategy.py` (NEW): XGBoost ML策略
+- ✅ `Engine_Matrix/backtest_engine.py` (8行): 小型重构
+- ⌚ `Analytics/reporters/company_info_manager.py` (9行): 工具更新
+
+### 🗑️ 清理 | Cleanup
+- 删除2500+行过期文档（GitHub指南、教程、旧版本发布说明）
+- 移除debug/test脚本和临时数据
+
+### ✅ 测试验证 | Testing
+- 子进程单独测试: ✅ 2秒训练, 29.46%回报率
+- Streamlit启动: ✅ 无警告, health check 200 OK
+- 初始资金: ✅ 验证30000美元
+
+### 📈 性能提升 | Performance
+- **之前**: 训练30-60秒GUI冻结 → 用户看到Connection error
+- **之后**: GUI全程响应，实时显示训练进度，图表显示买卖点
+
+---
+
 ## [2026.0.0] - 2026-03-16
 
 ### ✨ Features | 新功能

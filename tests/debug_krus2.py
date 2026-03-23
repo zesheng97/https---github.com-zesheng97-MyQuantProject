@@ -3,7 +3,7 @@ import pandas as pd
 from Strategy_Pool.strategies import BollingerBandsStrategy
 
 # 下载KRUS数据
-krus = yf.download('KRUS', start='2023-01-01', end='2023-05-01', progress=False)
+krus = yf.download('KRUS', start='2020-01-01', end='2024-01-01', progress=False)
 krus.columns = ['open', 'high', 'low', 'close', 'volume']
 krus = krus.dropna()
 

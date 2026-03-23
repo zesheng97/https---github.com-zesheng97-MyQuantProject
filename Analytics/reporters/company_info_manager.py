@@ -10,9 +10,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict
 import yfinance as yf
+from utils.safe_access import safe_get_first, safe_get
 
 # 尝试导入翻译库
 HAS_TRANSLATOR = False  # 暂时禁用翻译功能（googletrans 4.0+ 需要异步支持）
+TRANSLATOR = None
 
 
 class CompanyInfoManager:
@@ -123,6 +125,11 @@ class CompanyInfoManager:
         business_summary_cn = self._translate_to_chinese(business_summary_en) if business_summary_en else ''
         
         # 提取关键字段
+        # ✅ 使用安全访问函数避免 IndexError
+        officers = info.get('companyOfficers', [])
+        first_officer = safe_get_first(officers, {})
+        ceo_name = first_officer.get('name', 'N/A') if first_officer else 'N/A'
+        
         company_data = {
             'symbol': symbol,
             'name': info.get('longName', info.get('shortName', symbol)),
@@ -131,7 +138,7 @@ class CompanyInfoManager:
             'website': info.get('website', 'N/A'),
             'employees': info.get('fullTimeEmployees', 'N/A'),
             'founded': self._extract_founded(info),
-            'ceo': info.get('companyOfficers', [{}])[0].get('name', 'N/A') if info.get('companyOfficers') else 'N/A',
+            'ceo': ceo_name,
             
             # 企业简介（中英双语）
             'business_summary_cn': business_summary_cn,

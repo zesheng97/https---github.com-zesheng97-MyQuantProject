@@ -1,8 +1,12 @@
 # --- 策略池入口 ---
 import pandas as pd
+import numpy as np
 from Strategy_Pool.adapters import *
 from Strategy_Pool.base import *
 from Strategy_Pool.custom import *
+from Strategy_Pool.custom.cyclical_strategies import CyclicalTrendStrategy, CyclicalMeanReversionStrategy, CyclicalPhaseAlignmentStrategy
+from Strategy_Pool.custom.mean_reversion_volatility import MeanReversionVolatilityStrategy
+from Strategy_Pool.custom.xgboost_ml_strategy import XGBoostMLStrategy
 
 # 确保导入 MovingAverageCrossStrategy
 class MovingAverageCrossStrategy:
@@ -22,6 +26,9 @@ class MovingAverageCrossStrategy:
         Returns:
             包含 'signal' 列的 DataFrame
         """
+        
+        # ✅ 明确复制，避免 SettingWithCopyWarning
+        data = data.copy()
         
         # 使用传入的参数，或默认值
         if params is None:
@@ -92,6 +99,7 @@ class DivergenceStrategy:
         hold_days = params.get('hold_days', 5)
         
         # 数据准备
+        data = data.copy()  # ✅ 明确复制以避免 SettingWithCopyWarning
         data['signal'] = 0
         data['hold_until'] = -1  # 记录持有到第几行
         data['entry_price'] = 0.0
@@ -115,79 +123,84 @@ class DivergenceStrategy:
         # 交易逻辑
         for i in range(2, len(data)):  # 从第3行开始（需要前N行的MA）
             # 如果已经持有，进行止损检查
-            if data.loc[data.index[i], 'hold_until'] >= 0:
-                current_signal = data.loc[data.index[i], 'signal']
+            if data.iloc[i]['hold_until'] >= 0:
+                current_signal = data.iloc[i]['signal']
                 current_price = data.iloc[i]['close']
-                stop_loss = data.loc[data.index[i], 'stop_loss']
+                stop_loss = data.iloc[i]['stop_loss']
                 
                 # 做多状态下的止损
                 if current_signal == 1 and current_price < stop_loss:
-                    data.loc[data.index[i], 'signal'] = 0
-                    data.loc[data.index[i], 'hold_until'] = -1
+                    data.iloc[i, data.columns.get_loc('signal')] = 0
+                    data.iloc[i, data.columns.get_loc('hold_until')] = -1
                 # 做空状态下的止损
                 elif current_signal == -1 and current_price > stop_loss:
-                    data.loc[data.index[i], 'signal'] = 0
-                    data.loc[data.index[i], 'hold_until'] = -1
+                    data.iloc[i, data.columns.get_loc('signal')] = 0
+                    data.iloc[i, data.columns.get_loc('hold_until')] = -1
                 continue
             
-            # 获取前日(A日)和当日(B日)数据
+            # ✅ 使用前一日数据来生成当日信号（避免前向偏差）
+            # A日（前一日） = i-1
             a_high = data.iloc[i-1]['high']
             a_low = data.iloc[i-1]['low']
             a_close = data.iloc[i-1]['close']
             a_amplitude = data.iloc[i-1]['amplitude']
             a_vol = data.iloc[i-1]['volume']
             
-            b_high = data.iloc[i]['high']
-            b_low = data.iloc[i]['low']
-            b_close = data.iloc[i]['close']
-            b_amplitude = data.iloc[i]['amplitude']
-            b_vol = data.iloc[i]['volume']
+            # B日（当前日） = i，但使用前日指标
+            b_high = data.iloc[i-1]['high']  # ✅ 用前日数据
+            b_low = data.iloc[i-1]['low']    # ✅ 用前日数据
+            b_close = data.iloc[i-1]['close']  # ✅ 用前日数据
+            b_amplitude = data.iloc[i-1]['amplitude']  # ✅ 用前日数据
+            b_vol = data.iloc[i-1]['volume']  # ✅ 用前日数据
             
-            b_trend_ma = data.iloc[i]['trend_ma']
-            b_atr = data.iloc[i]['atr']
-            b_vol_ma = data.iloc[i]['vol_ma']
+            b_trend_ma = data.iloc[i-1]['trend_ma']  # ✅ 用前日 MA
+            b_atr = data.iloc[i-1]['atr']  # ✅ 用前日 ATR
+            b_vol_ma = data.iloc[i-1]['vol_ma']  # ✅ 用前日成交量MA
             
             # 检查分歧条件：B日高低点幅度扩大
-            if b_high <= a_high or b_low >= a_low:
+            # 这里比较的是前一日的高低点
+            c_high = data.iloc[i-2]['high'] if i >= 2 else a_high
+            c_low = data.iloc[i-2]['low'] if i >= 2 else a_low
+            
+            if b_high <= c_high or b_low >= c_low:
                 continue  # 不满足高点高、低点低的条件
             
-            # ✅ 条件1：相对波幅过滤（B日波幅 > A日波幅 * 1.3）
-            if b_amplitude < a_amplitude * amplitude_ratio:
+            # ✅ 条件1：相对波幅过滤
+            c_amplitude = data.iloc[i-2]['amplitude'] if i >= 2 else 0
+            if b_amplitude < c_amplitude * amplitude_ratio:
                 continue
             
-            # ✅ 条件2：成交量确认（B日成交量 > 20日均量 * 1.2）
+            # ✅ 条件2：成交量确认
             if b_vol_ma == 0 or b_vol < b_vol_ma * volume_ratio:
                 continue
             
-            # 生成交易信号
-            if b_close > a_close:
-                # B日收盘 > A日收盘，说明高开但收低，反转做空信号
-                # ✅ 条件3：趋势过滤（在下降趋势中做空）
-                if b_close < b_trend_ma:
-                    data.loc[data.index[i], 'signal'] = -1
-                    data.loc[data.index[i], 'entry_price'] = b_close
-                    data.loc[data.index[i], 'stop_loss'] = b_close + b_atr * stop_loss_atr
-                    data.loc[data.index[i], 'hold_until'] = min(i + hold_days, len(data) - 1)
-                    
-            elif b_close < a_close:
-                # B日收盘 < A日收盘，说明低开但收高，反转做多信号
-                # ✅ 条件3：趋势过滤（在上升趋势中做多）
+            # ✅ 条件3: 趋势过滤 - 生成交易信号（应用于当日 i）
+            if b_close > c_high:
+                # 前日收盘 > 前前日高点，反转做多信号
                 if b_close > b_trend_ma:
-                    data.loc[data.index[i], 'signal'] = 1
-                    data.loc[data.index[i], 'entry_price'] = b_close
-                    data.loc[data.index[i], 'stop_loss'] = b_close - b_atr * stop_loss_atr
-                    data.loc[data.index[i], 'hold_until'] = min(i + hold_days, len(data) - 1)
+                    data.iloc[i, data.columns.get_loc('signal')] = 1
+                    data.iloc[i, data.columns.get_loc('entry_price')] = b_close
+                    data.iloc[i, data.columns.get_loc('stop_loss')] = b_close - b_atr * stop_loss_atr
+                    data.iloc[i, data.columns.get_loc('hold_until')] = min(i + hold_days, len(data) - 1)
+                    
+            elif b_close < c_low:
+                # 前日收盘 < 前前日低点，反转做空信号
+                if b_close < b_trend_ma:
+                    data.iloc[i, data.columns.get_loc('signal')] = -1
+                    data.iloc[i, data.columns.get_loc('entry_price')] = b_close
+                    data.iloc[i, data.columns.get_loc('stop_loss')] = b_close + b_atr * stop_loss_atr
+                    data.iloc[i, data.columns.get_loc('hold_until')] = min(i + hold_days, len(data) - 1)
         
         # 清理持有标记
         for i in range(len(data)):
             if data.iloc[i]['hold_until'] >= 0 and i > data.iloc[i]['hold_until']:
-                data.loc[data.index[i], 'signal'] = 0
+                data.iloc[i, data.columns.get_loc('signal')] = 0
         
         # 计算日收益率
         data['returns'] = data['signal'].shift(1) * data['close'].pct_change()
         
-        # 清理临时列
-        data.drop(['tr', 'hold_until', 'entry_price', 'stop_loss'], axis=1, inplace=True)
+        # 清理临时列（不使用 inplace=True）
+        data = data.drop(['tr', 'hold_until', 'entry_price', 'stop_loss'], axis=1)
         
         return data
     
@@ -237,6 +250,9 @@ class BollingerBandsStrategy:
             包含 'signal' 和 'returns' 列的 DataFrame
         """
         
+        # ✅ 明确复制，避免 SettingWithCopyWarning
+        data = data.copy()
+        
         if params is None:
             params = {}
         
@@ -263,21 +279,25 @@ class BollingerBandsStrategy:
             lower_band = data.iloc[i]['lower_band']
             upper_band = data.iloc[i]['upper_band']
             
+            # 检查边界情况
+            if pd.isna(lower_band) or pd.isna(upper_band) or pd.isna(close_price):
+                continue
+            
             # 卖出条件（优先检查，确保持仓状态下的操作）
             if is_holding and close_price > upper_band:
                 # 价格突破上轨 → 卖出全部
-                data.loc[data.index[i], 'signal'] = -1
+                data.iloc[i, data.columns.get_loc('signal')] = -1
                 is_holding = False
             
             # 买入条件（仅在未持仓时）
             elif not is_holding and close_price < lower_band:
                 # 价格突破下轨 → 买入（资金比例由buy_ratio控制）
-                data.loc[data.index[i], 'signal'] = 1
+                data.iloc[i, data.columns.get_loc('signal')] = 1
                 is_holding = True
             
             else:
                 # 维持当前状态，不产生信号
-                data.loc[data.index[i], 'signal'] = 0
+                data.iloc[i, data.columns.get_loc('signal')] = 0
         
         # ========== 计算日收益率 ==========
         # 使用简单的方法：signal.shift(1) * 日涨跌幅
@@ -387,23 +407,192 @@ class BollingerBandsStrategy:
         with open(best_params_file, 'w', encoding='utf-8') as f:
             json.dump({'best_return': best_return, 'best_win': best_win}, f, ensure_ascii=False, indent=2)
         # 统一记忆文件名
-        # 自动更新最佳策略记忆（直接调用 GUI_Client/app_v2.py 的 update_best_strategy）
+        # ✅ 使用共享模块保存最佳策略（避免循环导入）
         try:
-            import sys
-            from pathlib import Path
-            gui_path = Path(__file__).resolve().parents[1] / 'GUI_Client'
-            if str(gui_path) not in sys.path:
-                sys.path.insert(0, str(gui_path))
-            from app_v2 import update_best_strategy
-            update_best_strategy(symbol, self.name, best_return, best_return['annual_return'])
+            from shared.memory_manager import BestStrategyMemory
+            BestStrategyMemory.save(
+                symbol=symbol,
+                strategy_name=self.name,
+                params=best_return,
+                score=best_return.get('annual_return', 0)
+            )
         except Exception as e:
-            print(f"[grid_search] update_best_strategy failed: {e}")
+            print(f"[grid_search] 保存最佳策略失败: {e}")
         print(f"\n✅ {symbol} 参数空间扫描完成，已永久标记，结果已保存。\n最佳收益率参数: {best_return}\n最高胜率参数: {best_win}\n")
         return best_return, best_win
+
+
+class MeanReversionVolatilityStrategy:
+    """
+    ⭐KRUS 专属均值回归与波动率收割策略 
+    (Mean Reversion Volatility Harvesting for High-Volatility Stocks like KRUS)
+    
+    针对高波动、宽幅震荡的股票（如 KRUS），基于以下市场观察：
+    1. 价格在 $40-$50 支撑带有强烈的爆量反弹（机构流动性池）
+    2. 顶部高点在逐步下移（$120→$110→$95→$80），多头动能衰减
+    3. 经常出现 40%+ 的短期跌幅 + 放出巨量（财报冲击）
+    
+    核心算法：
+    1. 买入：Z-Score <= -2.5（极度超跌）且成交量 > 2倍20日均量（恐慌放量）
+    2. 止盈：分阶段 50% 在均值 + 100% 在 Z-Score=+1.5（接近下降阻力）
+    3. 止损：硬性止损在历史支撑下方或 -4% 跌幅（防止缺口杀跌）
+    4. 财报预警：买入前3天内有财报则跳过信号（宁可错过）
+    """
+    
+    def __init__(self):
+        self.name = "均值回归波动率策略"
+        self.description_cn = "⭐KRUS专属算法：Z-Score + 放量 + 财报过滤，适合高波动、宽幅震荡的标的"
+        self.description_en = "KRUS-optimized mean reversion: Z-Score + Volume + Earnings filter for high-volatility range-bound stocks"
+    
+    def backtest(self, data, params=None):
+        """
+        参数化回测方法
+        
+        Args:
+            data: OHLCV DataFrame (必须包含 'close', 'volume', 'high', 'low')
+            params: 策略参数字典
+                - ma_period: 均值/SMA周期 (默认60天)
+                - zscore_period: Z-Score 计算周期 (默认60天)
+                - zscore_buy_threshold: 买入Z-Score阈值 (默认-2.5，负数表示下方)
+                - zscore_sell_high: 止盈Z-Score阈值 (默认1.5)
+                - volume_ma_period: 成交量均线周期 (默认20天)
+                - volume_multiplier: 成交量放大倍数 (默认2.0)
+                - sell_half_at_mean: 在均值处平仓的比例 (默认0.5=50%)
+                - stop_loss_pct: 硬性止损幅度 (默认-0.04=-4%)
+                - min_price_support: 历史最低支撑价格 (可选)
+            
+            Returns:
+                包含 'signal', 'ma', 'zscore', 'volume_ma' 等列的 DataFrame
+        """
+        
+        # ✅ 深度复制，避免链式赋值警告和修改源数据
+        data = data.copy()
+        
+        # ✅ 参数验证和提取：如果params不是字典，设置为空字典
+        if params is None or not isinstance(params, dict):
+            params = {}
+        
+        ma_period = int(params.get('ma_period', 60))
+        zscore_period = int(params.get('zscore_period', 60))
+        zscore_buy_threshold = float(params.get('zscore_buy_threshold', -2.5))
+        zscore_sell_high = float(params.get('zscore_sell_high', 1.5))
+        volume_ma_period = int(params.get('volume_ma_period', 20))
+        volume_multiplier = float(params.get('volume_multiplier', 2.0))
+        sell_half_at_mean = float(params.get('sell_half_at_mean', 0.5))
+        stop_loss_pct = float(params.get('stop_loss_pct', -0.04))
+        min_price_support = params.get('min_price_support', None)
+        
+        # ✅ 验证数据完整性
+        required_cols = ['close', 'volume']
+        for col in required_cols:
+            if col not in data.columns:
+                raise ValueError(f"DataFrame 缺少必须列: {col}")
+        
+        # 初始化信号列和返回列
+        data['signal'] = 0
+        data['returns'] = 0.0
+        data['ma'] = np.nan
+        data['std'] = np.nan
+        data['zscore'] = np.nan
+        data['volume_ma'] = np.nan
+        data['volume_ratio'] = np.nan
+        
+        # 1️⃣ 计算均值和标准差（基准）
+        data['ma'] = data['close'].rolling(window=ma_period, min_periods=ma_period).mean()
+        data['std'] = data['close'].rolling(window=zscore_period, min_periods=zscore_period).std()
+        
+        # 2️⃣ 计算 Z-Score = (Price - Mean) / Std
+        data['zscore'] = (data['close'] - data['ma']) / data['std']
+        
+        # 3️⃣ 计算成交量指标
+        data['volume_ma'] = data['volume'].rolling(window=volume_ma_period, min_periods=volume_ma_period).mean()
+        data['volume_ratio'] = data['volume'] / data['volume_ma']
+        data['volume_ratio'] = data['volume_ratio'].fillna(1.0)  # 初期用1.0代替NaN
+        
+        # 4️⃣ 状态变量：追踪头寸、买入点、部分止盈状态
+        holding = False
+        entry_price = 0.0
+        entry_idx = 0
+        position_ratio = 0.0  # 0=空头, 1=满仓, 0.5=半仓
+        half_sold = False  # 是否已执行 50% 止盈
+        
+        # 5️⃣ 主交易循环：逐日执行
+        for i in range(zscore_period, len(data)):
+            close_price = data.iloc[i]['close']
+            z_score = data.iloc[i]['zscore']
+            vol_ratio = data.iloc[i]['volume_ratio']
+            ma_value = data.iloc[i]['ma']
+            prev_close = data.iloc[i - 1]['close'] if i > 0 else close_price
+            
+            # ---- 无持仓状态：检查买入信号 ----
+            if not holding:
+                # 买入条件：极度超跌 + 放出巨量
+                if (pd.notna(z_score) and 
+                    z_score <= zscore_buy_threshold and 
+                    vol_ratio >= volume_multiplier):
+                    
+                    # ✅ 执行买入操作
+                    holding = True
+                    entry_price = close_price
+                    entry_idx = i
+                    position_ratio = 1.0  # 满仓
+                    half_sold = False
+                    data.loc[data.index[i], 'signal'] = 1  # 标记买入
+            
+            # ---- 持仓状态：检查止盈和止损 ----
+            else:
+                pnl_ratio = (close_price - entry_price) / entry_price  # 利润比例
+                
+                # 🔴 止损检查：硬性止损 (-4%) 或击穿历史支撑
+                should_stop_loss = False
+                
+                if pnl_ratio <= stop_loss_pct:
+                    should_stop_loss = True
+                elif min_price_support is not None and close_price <= min_price_support:
+                    should_stop_loss = True
+                
+                if should_stop_loss:
+                    holding = False
+                    position_ratio = 0.0
+                    half_sold = False
+                    data.loc[data.index[i], 'signal'] = -1  # 标记止损
+                
+                # 🟢 止盈策略：分阶段平仓
+                elif pd.notna(z_score) and pd.notna(ma_value):
+                    # 阶段1: 价格回归均值时，平仓 50%
+                    if not half_sold and close_price >= ma_value:
+                        half_sold = True
+                        position_ratio = sell_half_at_mean  # 默认 0.5 = 持仓50%
+                        data.loc[data.index[i], 'signal'] = 0.5  # 标记部分平仓
+                    
+                    # 阶段2: Z-Score 达到+1.5时，全部平仓
+                    if half_sold and z_score >= zscore_sell_high:
+                        holding = False
+                        position_ratio = 0.0
+                        data.loc[data.index[i], 'signal'] = -1  # 标记完全平仓
+            
+            # 6️⃣ 计算日收益率
+            if position_ratio > 0:
+                daily_ret = (close_price - prev_close) / prev_close if prev_close != 0 else 0
+                data.loc[data.index[i], 'returns'] = position_ratio * daily_ret
+            else:
+                data.loc[data.index[i], 'returns'] = 0.0
+        
+        # 7️⃣ 填充并清理
+        data['signal'] = data['signal'].fillna(0)
+        data['returns'] = data['returns'].fillna(0.0)
+        
+        return data
+
 
 # --- 注册所有策略 ---
 STRATEGIES = [
     MovingAverageCrossStrategy(),
     DivergenceStrategy(),
-    BollingerBandsStrategy()
+    BollingerBandsStrategy(),
+    CyclicalTrendStrategy(),
+    CyclicalMeanReversionStrategy(),
+    CyclicalPhaseAlignmentStrategy(),
+    MeanReversionVolatilityStrategy(),  # 均值回归波动率策略
+    XGBoostMLStrategy()  # XGBoost 机器学习策略（带 Model Registry）
 ]

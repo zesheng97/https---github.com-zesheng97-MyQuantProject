@@ -64,7 +64,7 @@ try:
     
     config = BacktestConfig(
         symbol="AAPL",
-        start_date="2023-01-01",
+        start_date="2020-01-01",
         end_date="2023-12-31",
         initial_capital=100000.0,
         strategy_params={"ma_short": 20, "ma_long": 60}

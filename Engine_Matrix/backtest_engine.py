@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import yfinance as yf
+from utils.safe_access import safe_divide, validate_price
 
 # 确保导入路径正确
 project_root = Path(__file__).resolve().parents[1]
@@ -163,6 +164,10 @@ class BacktestEngine:
             current_price = data.iloc[idx]['close']
             current_date = data.index[idx]
             
+            # ✅ 验证价格有效性
+            if not validate_price(current_price):
+                continue  # 跳过无效的价格
+            
             # 基于前一日的signal值（不是变化）来判断交易动作
             # signal = 1 表示持仓（继续持有）
             # signal = -1 表示卖出
@@ -171,7 +176,8 @@ class BacktestEngine:
             # 买入信号（从无仓位进入持仓状态）
             if prev_signal == 1 and shares == 0:
                 # 买入信号：用所有现金买入尽可能多的整数股
-                buy_shares = int(cash / current_price)
+                # ✅ 使用安全除法，避免 ZeroDivisionError
+                buy_shares = int(safe_divide(cash, current_price, 0))
                 if buy_shares > 0:
                     cost = buy_shares * current_price
                     shares = buy_shares

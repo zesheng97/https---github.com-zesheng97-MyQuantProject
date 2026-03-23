@@ -1,146 +1,714 @@
-# 🔬 Personal Quant Lab | 个人量化实验室
+# Personal Quant Lab
 
-**English** | [中文](#中文版本)
-
----
-
-## English Version
-
-### 🎯 Project Vision
-
-**Personal Quant Lab** is a **Python-based mid-to-low frequency quantitative backtesting platform** designed for individual traders and researchers. It combines:
-
-- 🎨 **User-Friendly Interface** — Interactive Streamlit GUI with real-time visualization
-- 🌐 **Bilingual Support** — Seamless switching between English and Chinese (future feature)
-- 📊 **Parameterized Backtesting** — Dynamic strategy testing with customizable parameters
-- 💾 **Dynamic Data Management** — Persistent local caching and flexible data pipeline
-- 🧩 **Modular Strategy Architecture** — Easy to add/remove strategy modules
-- 🤖 **AI Integration Ready** — Future support for AI Agent-powered analysis (Gemini, ChatGPT)
-
-### 🚀 Latest Updates (v2026.0.0)
-
-| Feature | Status | Details |
-|---------|--------|---------|
-| Parameterized Backtest Engine | ✅ Complete | Support custom dates, capital, strategy parameters |
-| Interactive Streamlit GUI | ✅ Complete | Real-time metrics, dual charts, trade logs |
-| Company Info Management | ✅ Complete | Real-time data + local caching |
-| Integer Share Trading Logic | ✅ Complete | Realistic position tracking |
-| Benchmark Comparison (NASDAQ/S&P 500) | ✅ Complete | Alpha calculation vs baselines |
-| Daily Trading Data Display | ✅ Complete | Open price, day change, change percentage |
-| Bilingual Documentation | ✅ Complete | Full English + Chinese README |
-| AI-Powered Research Agent | 🔜 Planned (v2026.2.0) | Integration with Gemini/ChatGPT for strategy optimization |
-
-### 📋 Table of Contents
-
-1. [Architecture Overview](#architecture-overview)
-2. [Module Descriptions](#module-descriptions)
-3. [Installation & Setup](#installation--setup)
-4. [Quick Start](#quick-start)
-5. [Project Structure](#project-structure)
-6. [Data Pipeline](#data-pipeline)
-7. [API Reference](#api-reference)
-8. [Future Roadmap](#future-roadmap)
+**Version**: 3.0.0 | **Python**: 3.10+ | **Status**: Production Ready
 
 ---
 
-### 📐 Architecture Overview
+## Overview
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Personal Quant Lab                         │
-└──────────────────────────────────────────────────────────────┘
+Personal Quant Lab is a Python-based quantitative backtesting platform designed for individual traders and researchers. It provides a complete system for strategy development, testing, and analysis with a user-friendly interface.
 
-    Data Layer          Core Engine           Interface Layer
-    ┌──────────┐        ┌──────────┐        ┌──────────────┐
-    │ Data_Hub │        │ Engine   │        │ GUI_Client   │
-    │ - yf     │───────▶│ - Matrix │───────▶│ - Streamlit  │
-    │ - Parquet│        │ - Config │        │ - Plotly     │
-    └──────────┘        │ - Result │        └──────────────┘
-                        └──────────┘
-    Strategy                ▲
-    ┌──────────┐           │
-    │ Pool     │───────────┘
-    │ - MA     │
-    │ - Custom │
-    └──────────┘
+**Key Features:**
+- Parameterized backtesting with dynamic strategy configuration
+- Real-time web interface (Streamlit + Plotly)
+- Support for multiple strategies with easy extensibility
+- Comprehensive performance metrics (Sharpe ratio, drawdown, win rate, etc.)
+- Local data caching with Parquet format
+- Company information management with real-time data
 
-    Analysis            Infrastructure
-    ┌──────────┐        ┌──────────────┐
-    │Analytics │        │ Core_Bus     │
-    │- Reports │        │ - Std Data   │
-    │- InfoMgr │        │ - ValidationCoreLib
-    └──────────┘        └──────────────┘
+---
+
+## Quick Start
+
+### Installation
+
+```bash
+git clone https://github.com/your-username/MyQuantProject.git
+cd MyQuantProject
+
+pip install -r requirements.txt
+python create.py  # Initialize project structure
 ```
 
+### Launch GUI
+
+```bash
+python run_gui.py
+# Streamlit app opens at http://localhost:8501
+```
+
+### Download Data
+
+```bash
+python download_sp500_nasdaq100.py
+# Fetches ~100 stocks into Data_Hub/storage/
+```
+
+### Programmatic Usage
+
+```python
+from Engine_Matrix.backtest_engine import BacktestEngine, BacktestConfig
+from Strategy_Pool.strategies import STRATEGIES
+
+config = BacktestConfig(
+    symbol="AAPL",
+    start_date="2023-01-01",
+    end_date="2025-12-31",
+    initial_capital=30000,
+    strategy_name="MovingAverageCrossStrategy",
+    strategy_params={"ma_short": 20, "ma_long": 60}
+)
+
+engine = BacktestEngine()
+result = engine.run(config)
+
+print(f"Total Return: {result.metrics['total_return']:.2%}")
+print(f"Sharpe Ratio: {result.metrics['sharpe_ratio']:.2f}")
+print(f"Max Drawdown: {result.metrics['max_drawdown']:.2%}")
 ---
 
-### 📦 Module Descriptions
+## System Architecture
 
-#### 1. **Engine_Matrix** — Backtesting Core
-- **File**: `Engine_Matrix/backtest_engine.py`
-- **Main Classes**:
-  - `BacktestConfig` — Configuration dataclass
-  - `BacktestResult` — Results container with metrics
-  - `BacktestEngine` — Main simulation engine
-- **Key Methods**:
-  - `run(config)` — Execute full backtest
-  - `_simulate_trading()` — Daily position management (integer shares only)
-  - `_compute_metrics()` — Calculate 7+ performance metrics (Sharpe, Drawdown, Win Rate, etc.)
-  - `_get_benchmark_returns()` — Download NASDAQ & S&P 500 for comparison
-- **Metrics Calculated**:
-  - Total Return % | Annual Return % | Sharpe Ratio
-  - Max Drawdown | Win Rate | Number of Trades
-  - Risk-Adjusted Returns
+**Data Flow:**
 
-#### 2. **Data_Hub** — Data Pipeline
-- **File**: `Data_Hub/fetchers/yf_downloader.py`
-- **Main Class**: `YFinanceDownloader`
-- **Features**:
-  - Batch download from Yahoo Finance (yfinance)
-  - Optional HTTP proxy support
-  - Automatic retry on failure
-  - Save as Parquet format (compressed, fast read/write)
-- **Database**: `Data_Hub/storage/{symbol}.parquet` (48+ US stocks)
+```
+Yahoo Finance → YFinanceDownloader → Parquet Storage
+                                           ↓
+                                    (standardize_ohlcv)
+                                           ↓
+Strategy Pool → BacktestEngine → Metrics + Charts
+                   ↓
+             Company Info Mgr → GUI (Streamlit)
+```
 
-#### 3. **Core_Bus** — Data Standardization
-- **File**: `Core_Bus/standard.py`
-- **Function**: `standardize_ohlcv(df)` 
-- **Responsibilities**:
-  - Flatten MultiIndex columns (yfinance raw format)
-  - Normalize column names to [open, high, low, close, volume]
-  - Validate required columns and data types
-  - Set proper datetime index
+**Core Modules:**
 
-#### 4. **Strategy_Pool** — Strategy Library
-- **File**: `Strategy_Pool/strategies.py`
-- **Built-in Strategies**:
-  - `MovingAverageCrossStrategy` — SMA crossover (short & long windows)
-- **Design Pattern**:
-  - Strategy parameter injection at runtime
-  - Signal generation: 1 (long), -1 (short), 0 (neutral)
-  - Easy to extend with new strategies
+| Module | Purpose | Key Files |
+|--------|---------|-----------|
+| **Engine_Matrix** | Backtesting core with position management | `backtest_engine.py` |
+| **Strategy_Pool** | Strategy implementations | `strategies.py`, `custom/` |
+| **Data_Hub** | Data acquisition and storage | `fetchers/yf_downloader.py` |
+| **Core_Bus** | Data standardization (OHLCV) | `standard.py` |
+| **Analytics** | Company info & performance reporting | `reporters/company_info_manager.py` |
+| **GUI_Client** | Web interface | `app_v2.py` (Streamlit) |
 
-#### 5. **Analytics** — Analysis Tools
-- **File**: `Analytics/reporters/company_info_manager.py`
-- **Main Class**: `CompanyInfoManager`
-- **Features**:
-  - Real-time company info via yfinance API
-  - Local JSON caching in `Company_KnowledgeBase/`
-  - Three-tier priority: Cache → API → Default
-  - **Extracted Fields**:
-    - Basic Info: Name, Sector, Industry, Website, CEO, Employees
-    - Market Data: Current Price, Open, Day Change, Change %, Market Cap, P/E
-    - Fundamentals: FCF, ROE
-    - Descriptions: Business Summary (English + Chinese Beta)
+---
 
-#### 6. **GUI_Client** — Interactive Interface
-- **File**: `GUI_Client/app_v2.py`
-- **Framework**: Streamlit + Plotly
-- **Components**:
-  - Sidebar: Company info card + parameter controls
-  - Main area: Metrics cards + dual charts + trade logs
-  - Charts: Equity curve + K-line candlestick with buy/sell markers
-  - Controls: Date range, initial capital, strategy params (sliders)
+## Project Structure
+
+```
+MyQuantProject/
+├── README.md
+├── create.py                           # Initialize project
+├── run_gui.py                          # GUI entry point
+├── download_sp500_nasdaq100.py         # Download market data
+│
+├── Core_Bus/                           # Data standardization
+│   └── standard.py
+├── Data_Hub/                           # Data pipeline
+│   ├── fetchers/yf_downloader.py
+│   └── storage/                        # Parquet files
+├── Engine_Matrix/                      # Backtesting engine
+│   ├── backtest_engine.py
+│   └── advanced_simulator.py
+├── Strategy_Pool/                      # Strategy library
+│   ├── strategies.py
+│   └── custom/
+│       ├── xgboost_ml_strategy.py
+│       └── cyclical_strategies.py
+├── Analytics/                          # Analysis & reporting
+│   └── reporters/company_info_manager.py
+└── GUI_Client/                         # Streamlit interface
+    ├── app_v2.py
+    └── xgboost_worker.py               # Async XGBoost trainer
+```
+
+---
+
+## Core Components
+
+### BacktestEngine
+
+Executes trade simulation with share-level position management.
+
+**Key Metrics Calculated:**
+- Total Return, Annual Return
+- Sharpe Ratio, Max Drawdown
+- Win Rate, Number of Trades
+- Risk-Adjusted Returns
+
+**Core Method:**
+```python
+result = engine.run(config: BacktestConfig) -> BacktestResult
+```
+
+### Strategy Interface
+
+All strategies inherit from base class with signal generation:
+
+```python
+class BaseStrategy:
+    def backtest(self, df: DataFrame, params: dict) -> DataFrame
+        # Returns DataFrame with columns: [close, signal, return, equity]
+        # signal: 1 (buy), -1 (sell), 0 (neutral)
+```
+
+**Built-in Strategies:**
+- `MovingAverageCrossStrategy`: SMA crossover (configurable periods)
+- `XGBoostMLStrategy`: ML-based signal generation with GPU support
+
+### GUI Features
+
+**Sidebar:**
+- Company information card
+- Parameter controls (date range, capital, strategy params)
+
+**Main Area:**
+- Performance metrics summary
+- Equity curve chart with buy/sell markers
+- K-line candlestick chart with technical overlays
+- Trade log with entry/exit prices
+
+---
+
+## API Reference
+
+### BacktestConfig
+
+Configuration dataclass for backtesting:
+
+```python
+@dataclass
+class BacktestConfig:
+    symbol: str                          # e.g., "AAPL"
+    start_date: str                      # "YYYY-MM-DD"
+    end_date: str
+    initial_capital: float               # e.g., 30000
+    strategy_name: str                   # Strategy identifier
+    strategy_params: dict                # Strategy-specific params
+```
+
+### BacktestResult
+
+Results container with full backtest data:
+
+```python
+@dataclass
+class BacktestResult:
+    equity_curve: Series                 # Daily portfolio value
+    trades: DataFrame                    # Trade history with prices/PnL
+    metrics: dict                        # Performance metrics
+    raw_data: DataFrame                  # Signal & return data
+    config: BacktestConfig
+```
+
+### Metrics Dictionary
+
+```python
+metrics = {
+    'total_return': float,               # Overall return %
+    'annual_return': float,              # Annualized return %
+    'sharpe_ratio': float,               # Risk-adjusted return
+    'max_drawdown': float,               # Peak-to-trough decline
+    'win_rate': float,                   # % profitable trades
+    'num_trades': int,                   # Total trades
+}
+```
+
+---
+
+## Performance Optimization (v3.0.0)
+
+**XGBoost Subprocess Architecture:**
+- Long-running XGBoost training moved to independent subprocess
+- GUI remains responsive via `@st.fragment(run_every=3s)`
+- Real-time progress polling via file system
+- Trades with buy/sell markers automatically generated
+
+**Improvements:**
+- Before: 30-60s GUI freeze during training → "Connection error"
+- After: Responsive UI throughout training with real-time feedback
+
+---
+
+## Data Management
+
+### Data Source
+
+Yahoo Finance via `yfinance` library. Default: 48+ US stocks in `Data_Hub/storage/` as Parquet files.
+
+### Caching
+
+**Company Information:**
+- Cached locally in `Company_KnowledgeBase/{symbol}.json`
+- Three-tier priority: Local → API → Default values
+- Includes: name, sector, website, CEO, P/E ratio, market cap
+
+---
+
+## Configuration
+
+### Streamlit Configuration
+
+Edit `.streamlit/config.toml`:
+
+```toml
+[server]
+maxUploadSize = 200
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#0066cc"
+```
+
+### Environment Variables
+
+Optional proxy configuration:
+```bash
+export HTTP_PROXY=your-proxy-url
+export HTTPS_PROXY=your-proxy-url
+```
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+
+**Current Version**: **v3.0.0** (March 23, 2026)
+- XGBoost subprocess architecture (resolves GUI freezing)
+- Share-level trading simulation with buy/sell visualization
+- Streamlit 1.55.0 API compatibility
+- XGBoost 3.1+ GPU support
+
+---
+
+## Development
+
+### Adding a New Strategy
+
+1. Create strategy class in `Strategy_Pool/custom/`:
+
+```python
+from Strategy_Pool.base import BaseStrategy
+
+class MyStrategy(BaseStrategy):
+    def backtest(self, df, params):
+        # Generate signals
+        df['signal'] = ...
+        df['return'] = ...
+        df['equity'] = ...
+        return df
+```
+
+2. Register in `Strategy_Pool/strategies.py`:
+
+```python
+STRATEGIES['MyStrategy'] = MyStrategy
+```
+
+### Running Tests
+
+```bash
+python -c "
+from Engine_Matrix.backtest_engine import BacktestEngine, BacktestConfig
+config = BacktestConfig(symbol='AAPL', ...)
+engine = BacktestEngine()
+result = engine.run(config)
+print(f'Success: {result.metrics[\"total_return\"]:.2%}')
+"
+```
+
+---
+
+## Requirements
+
+- Python 3.10+
+- pandas, numpy
+- yfinance (data)
+- plotly (charting)
+- streamlit (GUI)
+- xgboost (optional, for ML strategy)
+- scikit-learn (optional, for preprocessing)
+
+See `requirements.txt` for full list with versions.
+
+---
+
+## License
+
+MIT License - See LICENSE file for details
+
+---
+
+## Support
+
+For issues, feature requests, or documentation, visit:
+- GitHub Issues: [Report a bug](https://github.com/your-username/MyQuantProject/issues)
+- Documentation: [CHANGELOG.md](CHANGELOG.md), [RELEASE_v3_SUMMARY.md](RELEASE_v3_SUMMARY.md)
+
+---
+
+**Last Updated**: March 23, 2026 | v3.0.0
+
+---
+
+# 个人量化实验室（中文版）
+
+**版本**: 3.0.0 | **Python**: 3.10+ | **状态**: 生产就绪
+
+---
+
+## 项目概述
+
+个人量化实验室是一个Python量化回测平台，为个人交易者和研究人员设计。提供完整的策略开发、测试和分析系统。
+
+**核心功能:**
+- 参数化回测，动态策略配置
+- 实时网页界面（Streamlit + Plotly）
+- 支持多策略，易于扩展
+- 完整性能指标（夏普比率、最大回撤、胜率等）
+- 本地数据缓存（Parquet格式）
+- 企业信息管理，实时数据集成
+
+---
+
+## 快速开始
+
+### 安装
+
+```bash
+git clone https://github.com/your-username/MyQuantProject.git
+cd MyQuantProject
+
+pip install -r requirements.txt
+python create.py  # 初始化项目结构
+```
+
+### 启动GUI
+
+```bash
+python run_gui.py
+# 自动打开 http://localhost:8501
+```
+
+### 下载数据
+
+```bash
+python download_sp500_nasdaq100.py
+# 获取~100支股票到 Data_Hub/storage/
+```
+
+### 编程使用
+
+```python
+from Engine_Matrix.backtest_engine import BacktestEngine, BacktestConfig
+
+config = BacktestConfig(
+    symbol="AAPL",
+    start_date="2023-01-01",
+    end_date="2025-12-31",
+    initial_capital=30000,
+    strategy_name="MovingAverageCrossStrategy",
+    strategy_params={"ma_short": 20, "ma_long": 60}
+)
+
+engine = BacktestEngine()
+result = engine.run(config)
+
+print(f"总收益率: {result.metrics['total_return']:.2%}")
+print(f"夏普比率: {result.metrics['sharpe_ratio']:.2f}")
+print(f"最大回撤: {result.metrics['max_drawdown']:.2%}")
+```
+
+---
+
+## 系统架构
+
+**数据流:**
+
+```
+Yahoo Finance → YFinanceDownloader → Parquet数据库
+                                           ↓
+                                    (standardize_ohlcv)
+                                           ↓
+策略库 → BacktestEngine → 指标+图表
+                ↓
+        企业信息管理 → GUI (Streamlit)
+```
+
+**核心模块:**
+
+| 模块 | 功能 | 关键文件 |
+|------|------|--------|
+| **Engine_Matrix** | 回测核心，仓位管理 | `backtest_engine.py` |
+| **Strategy_Pool** | 策略实现库 | `strategies.py`, `custom/` |
+| **Data_Hub** | 数据获取与存储 | `fetchers/yf_downloader.py` |
+| **Core_Bus** | 数据标准化 | `standard.py` |
+| **Analytics** | 企业信息与报告 | `reporters/company_info_manager.py` |
+| **GUI_Client** | 网页界面 | `app_v2.py` (Streamlit) |
+
+---
+
+## 项目结构
+
+```
+MyQuantProject/
+├── README.md
+├── create.py                           # 项目初始化
+├── run_gui.py                          # GUI启动器
+├── download_sp500_nasdaq100.py         # 数据下载
+│
+├── Core_Bus/                           # 数据标准化
+│   └── standard.py
+├── Data_Hub/                           # 数据中心
+│   ├── fetchers/yf_downloader.py
+│   └── storage/                        # Parquet文件
+├── Engine_Matrix/                      # 回测引擎
+│   ├── backtest_engine.py
+│   └── advanced_simulator.py
+├── Strategy_Pool/                      # 策略库
+│   ├── strategies.py
+│   └── custom/
+│       ├── xgboost_ml_strategy.py
+│       └── cyclical_strategies.py
+├── Analytics/                          # 分析工具
+│   └── reporters/company_info_manager.py
+└── GUI_Client/                         # Streamlit界面
+    ├── app_v2.py
+    └── xgboost_worker.py               # XGBoost异步训练
+```
+
+---
+
+## 核心组件
+
+### BacktestEngine
+
+执行交易模拟，支持股数级仓位管理。
+
+**计算指标:**
+- 总收益率、年化收益率
+- 夏普比率、最大回撤
+- 胜率、交易次数
+- 风险调整收益
+
+**核心方法:**
+```python
+result = engine.run(config: BacktestConfig) -> BacktestResult
+```
+
+### 策略接口
+
+所有策略继承基类，生成交易信号：
+
+```python
+class BaseStrategy:
+    def backtest(self, df: DataFrame, params: dict) -> DataFrame
+        # 返回包含 [close, signal, return, equity] 列的DataFrame
+        # signal: 1 (买入), -1 (卖出), 0 (中性)
+```
+
+**内置策略:**
+- `MovingAverageCrossStrategy`: SMA均线交叉
+- `XGBoostMLStrategy`: 机器学习信号生成（GPU支持）
+
+### GUI功能
+
+**侧边栏:**
+- 企业信息卡片
+- 参数控制（日期范围、资金、策略参数）
+
+**主区域:**
+- 关键指标摘要
+- 净值曲线图表（含买卖点标记）
+- K线蜡烛图（含技术指标）
+- 交易日志表格
+
+---
+
+## API参考
+
+### BacktestConfig
+
+```python
+@dataclass
+class BacktestConfig:
+    symbol: str                          # 股票代码 如"AAPL"
+    start_date: str                      # "YYYY-MM-DD"
+    end_date: str
+    initial_capital: float               # 初始资金 如30000
+    strategy_name: str                   # 策略名称
+    strategy_params: dict                # 策略参数字典
+```
+
+### BacktestResult
+
+```python
+@dataclass
+class BacktestResult:
+    equity_curve: Series                 # 每日投资组合价值
+    trades: DataFrame                    # 交易历史（价格、股数、盈亏）
+    metrics: dict                        # 性能指标
+    raw_data: DataFrame                  # 信号与收益数据
+    config: BacktestConfig
+```
+
+### 指标字典
+
+```python
+metrics = {
+    'total_return': float,               # 总收益率 %
+    'annual_return': float,              # 年化收益率 %
+    'sharpe_ratio': float,               # 夏普比率
+    'max_drawdown': float,               # 最大回撤 %
+    'win_rate': float,                   # 胜率 %
+    'num_trades': int,                   # 交易次数
+}
+```
+
+---
+
+## v3.0.0 性能优化
+
+**XGBoost子进程架构:**
+- 长时间XGBoost训练移至独立子进程
+- GUI通过`@st.fragment(run_every=3s)`保持响应
+- 实时进度轮询，文件系统通信
+- 买卖点自动生成
+
+**改进对比:**
+- 前: 训练30-60秒GUI冻结→"Connection error"
+- 后: UI全程响应，实时反馈，图表同步显示
+
+---
+
+## 数据管理
+
+### 数据源
+
+Yahoo Finance (yfinance库)，默认48+美股存储在`Data_Hub/storage/`的Parquet文件。
+
+### 缓存策略
+
+**企业信息:**
+- 本地缓存: `Company_KnowledgeBase/{symbol}.json`
+- 优先级: 本地 → API → 默认值
+- 包含: 名称、行业、网站、CEO、P/E、市值
+
+---
+
+## 配置
+
+### Streamlit配置
+
+编辑`.streamlit/config.toml`:
+
+```toml
+[server]
+maxUploadSize = 200
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#0066cc"
+```
+
+### 环境变量
+
+可选代理配置:
+```bash
+export HTTP_PROXY=your-proxy-url
+export HTTPS_PROXY=your-proxy-url
+```
+
+---
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)。
+
+**当前版本**: **v3.0.0** (2026年3月23日)
+- XGBoost子进程架构（解决GUI冻结）
+- 股数级交易模拟，买卖点可视化
+- Streamlit 1.55.0 API兼容性
+- XGBoost 3.1+ GPU支持
+
+---
+
+## 开发指南
+
+### 添加新策略
+
+1. 在`Strategy_Pool/custom/`创建策略类:
+
+```python
+from Strategy_Pool.base import BaseStrategy
+
+class MyStrategy(BaseStrategy):
+    def backtest(self, df, params):
+        df['signal'] = ...
+        df['return'] = ...
+        df['equity'] = ...
+        return df
+```
+
+2. 在`Strategy_Pool/strategies.py`中注册:
+
+```python
+STRATEGIES['MyStrategy'] = MyStrategy
+```
+
+### 测试
+
+```bash
+python -c "
+from Engine_Matrix.backtest_engine import BacktestEngine, BacktestConfig
+config = BacktestConfig(symbol='AAPL', ...)
+engine = BacktestEngine()
+result = engine.run(config)
+print(f'成功: {result.metrics[\"total_return\"]:.2%}')
+"
+```
+
+---
+
+## 依赖
+
+- Python 3.10+
+- pandas, numpy
+- yfinance (数据)
+- plotly (图表)
+- streamlit (GUI)
+- xgboost (可选，ML策略)
+- scikit-learn (可选，数据预处理)
+
+详见`requirements.txt`。
+
+---
+
+## 许可证
+
+MIT License - 详见LICENSE文件
+
+---
+
+## 支持
+
+问题、功能请求或文档:
+- GitHub Issues: [报告Bug](https://github.com/your-username/MyQuantProject/issues)
+- 文档: [CHANGELOG.md](CHANGELOG.md), [RELEASE_v3_SUMMARY.md](RELEASE_v3_SUMMARY.md)
+
+---
+
+**最后更新**: 2026年3月23日 | v3.0.0
 
 ---
 

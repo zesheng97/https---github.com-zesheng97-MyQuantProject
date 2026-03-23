@@ -1487,6 +1487,6 @@ MIT License — 欢迎用于个人研究和学习
 
 ---
 
-**最后更新**: 2026年3月16日 | Last Updated: March 16, 2026
-**版本**: v2026.0.0 | Version: v2026.0.0
+**最后更新**: 2026年3月23日 | Last Updated: March 23, 2026
+**版本**: 3.0.0 | Version: 3.0.0
 **许可证**: MIT License | GitHub: [personal-quant-lab](https://github.com/yourusername/personal-quant-lab)

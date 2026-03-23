@@ -1,0 +1,244 @@
+Date : 2026-03-23 07:10:54
+Directory : d:\MyQuantProject
+Total : 174 files,  27424 codes, 2334 comments, 6856 blanks, all 36614 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| Markdown         |         60 |     15,847 |          0 |      5,011 |     20,858 |
+| Python           |         68 |      6,978 |      2,311 |      1,806 |     11,095 |
+| CSV              |          2 |      4,072 |          0 |          2 |      4,074 |
+| JSON             |         41 |        361 |          0 |          0 |        361 |
+| Shell Script     |          1 |        114 |          7 |         17 |        138 |
+| YAML             |          1 |         43 |          2 |         12 |         57 |
+| pip requirements |          1 |          9 |         14 |          8 |         31 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                  | files      | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                     |        174 |     27,424 |      2,334 |      6,856 |     36,614 |
+| . (Files)                                                                             |         10 |      1,948 |         65 |        553 |      2,566 |
+| .github                                                                               |          3 |        209 |          2 |         33 |        244 |
+| .github\ISSUE_TEMPLATE                                                                |          2 |        166 |          0 |         21 |        187 |
+| .github\workflows                                                                     |          1 |         43 |          2 |         12 |         57 |
+| Analytics                                                                             |          5 |        458 |        301 |        117 |        876 |
+| Analytics\metrics                                                                     |          1 |          0 |          0 |          1 |          1 |
+| Analytics\reporters                                                                   |          4 |        458 |        301 |        116 |        875 |
+| Core_Bus                                                                              |          2 |         21 |         10 |          8 |         39 |
+| Data_Hub                                                                              |         45 |        456 |         12 |         20 |        488 |
+| Data_Hub\cleaners                                                                     |          1 |          0 |          0 |          1 |          1 |
+| Data_Hub\fetchers                                                                     |          3 |         75 |         12 |         18 |        105 |
+| Data_Hub\model_registry                                                               |         41 |        381 |          0 |          1 |        382 |
+| Engine_Matrix                                                                         |          5 |        272 |        236 |        101 |        609 |
+| Engine_Matrix (Files)                                                                 |          3 |        272 |        236 |         99 |        607 |
+| Engine_Matrix\external_wrappers                                                       |          1 |          0 |          0 |          1 |          1 |
+| Engine_Matrix\simulators                                                              |          1 |          0 |          0 |          1 |          1 |
+| GUI_Client                                                                            |          4 |      1,768 |        206 |        341 |      2,315 |
+| Strategy_Pool                                                                         |         13 |      2,557 |        771 |        774 |      4,102 |
+| Strategy_Pool (Files)                                                                 |          2 |        412 |        176 |         87 |        675 |
+| Strategy_Pool\adapters                                                                |          1 |          0 |          0 |          1 |          1 |
+| Strategy_Pool\base                                                                    |          1 |          0 |          0 |          1 |          1 |
+| Strategy_Pool\custom                                                                  |          9 |      2,145 |        595 |        685 |      3,425 |
+| data                                                                                  |          1 |          1 |          0 |          0 |          1 |
+| docs                                                                                  |         54 |     17,377 |         27 |      4,192 |     21,596 |
+| docs (Files)                                                                          |          5 |      5,112 |          0 |        390 |      5,502 |
+| docs\CODE_REVIEW                                                                      |          8 |      2,773 |          0 |        817 |      3,590 |
+| docs\FIXES                                                                            |          5 |      1,234 |          0 |        363 |      1,597 |
+| docs\GITHUB                                                                           |          4 |        786 |          7 |        274 |      1,067 |
+| docs\GUIDES                                                                           |          3 |        616 |         20 |        205 |        841 |
+| docs\IMPLEMENTATION                                                                   |         13 |      2,840 |          0 |        921 |      3,761 |
+| docs\PROJECT_MANAGEMENT                                                               |          4 |        790 |          0 |        242 |      1,032 |
+| docs\RELEASES                                                                         |          3 |        787 |          0 |        244 |      1,031 |
+| docs\STRATEGIES                                                                       |          4 |      1,347 |          0 |        382 |      1,729 |
+| docs\STRATEGIES\MEAN_REVERSION                                                        |          4 |      1,347 |          0 |        382 |      1,729 |
+| docs\XGBOOST                                                                          |          5 |      1,092 |          0 |        354 |      1,446 |
+| shared                                                                                |          2 |         55 |         33 |         17 |        105 |
+| tests                                                                                 |         27 |      2,226 |        555 |        674 |      3,455 |
+| tests (Files)                                                                         |         26 |      2,118 |        535 |        642 |      3,295 |
+| tests\examples                                                                        |          1 |        108 |         20 |         32 |        160 |
+| utils                                                                                 |          3 |         76 |        116 |         26 |        218 |
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++---------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                                                              | language         | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| d:\MyQuantProject\.github\ISSUE_TEMPLATE\bug_report.md                                | Markdown         |         92 |          0 |         11 |        103 |
+| d:\MyQuantProject\.github\ISSUE_TEMPLATE\feature_request.md                           | Markdown         |         74 |          0 |         10 |         84 |
+| d:\MyQuantProject\.github\workflows\tests.yml                                         | YAML             |         43 |          2 |         12 |         57 |
+| d:\MyQuantProject\Analytics\metrics\__init__.py                                       | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Analytics\reporters\__init__.py                                     | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Analytics\reporters\company_info_manager.py                         | Python           |        126 |         99 |         37 |        262 |
+| d:\MyQuantProject\Analytics\reporters\periodicity_analyzer.py                         | Python           |        154 |         94 |         53 |        301 |
+| d:\MyQuantProject\Analytics\reporters\sharpe_rating.py                                | Python           |        178 |        108 |         25 |        311 |
+| d:\MyQuantProject\CHANGELOG.md                                                        | Markdown         |        152 |          0 |         49 |        201 |
+| d:\MyQuantProject\CONTRIBUTING.md                                                     | Markdown         |        227 |          0 |         80 |        307 |
+| d:\MyQuantProject\Core_Bus\__init__.py                                                | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Core_Bus\standard.py                                                | Python           |         21 |         10 |          7 |         38 |
+| d:\MyQuantProject\Data_Hub\cleaners\__init__.py                                       | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Data_Hub\fetchers\__init__.py                                       | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Data_Hub\fetchers\batch_yf_update.py                                | Python           |         28 |          5 |          5 |         38 |
+| d:\MyQuantProject\Data_Hub\fetchers\yf_downloader.py                                  | Python           |         47 |          7 |         12 |         66 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052034.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052109.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052248.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052617.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052701.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052902.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_052943.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_053115.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_053257.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_053340.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_054224.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_054536.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_055338.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_055510.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_060049.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_060607.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_060619.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_060624.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_061935.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\metadata_20260323_062718.json               | JSON             |         17 |          0 |          0 |         17 |
+| d:\MyQuantProject\Data_Hub\model_registry\registry.csv                                | CSV              |         21 |          0 |          1 |         22 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052034.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052109.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052248.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052617.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052701.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052902.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_052943.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_053115.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_053257.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_053340.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_054224.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_054536.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_055338.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_055510.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_060049.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_060607.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_060619.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_060624.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_061935.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Data_Hub\model_registry\xgboost_20260323_062718.json                | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\Engine_Matrix\__init__.py                                           | Python           |          2 |          1 |          2 |          5 |
+| d:\MyQuantProject\Engine_Matrix\advanced_simulator.py                                 | Python           |        101 |        129 |         43 |        273 |
+| d:\MyQuantProject\Engine_Matrix\backtest_engine.py                                    | Python           |        169 |        106 |         54 |        329 |
+| d:\MyQuantProject\Engine_Matrix\external_wrappers\__init__.py                         | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Engine_Matrix\simulators\__init__.py                                | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\GUI_Client\__init__.py                                              | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\GUI_Client\app.py                                                   | Python           |         77 |         18 |         19 |        114 |
+| d:\MyQuantProject\GUI_Client\app_v2.py                                                | Python           |      1,550 |        174 |        290 |      2,014 |
+| d:\MyQuantProject\GUI_Client\xgboost_worker.py                                        | Python           |        141 |         14 |         31 |        186 |
+| d:\MyQuantProject\README.md                                                           | Markdown         |      1,164 |          0 |        329 |      1,493 |
+| d:\MyQuantProject\RELEASE_v3_SUMMARY.md                                               | Markdown         |         98 |          0 |         37 |        135 |
+| d:\MyQuantProject\Strategy_Pool\adapters\__init__.py                                  | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Strategy_Pool\base\__init__.py                                      | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Strategy_Pool\custom\API_REFERENCE.md                               | Markdown         |        298 |          0 |        106 |        404 |
+| d:\MyQuantProject\Strategy_Pool\custom\INTEGRATION_GUIDE.md                           | Markdown         |        375 |          0 |        137 |        512 |
+| d:\MyQuantProject\Strategy_Pool\custom\XGBOOST_ML_STRATEGY_GUIDE.md                   | Markdown         |        263 |          0 |        110 |        373 |
+| d:\MyQuantProject\Strategy_Pool\custom\__init__.py                                    | Python           |          0 |          0 |          1 |          1 |
+| d:\MyQuantProject\Strategy_Pool\custom\cyclical_strategies.py                         | Python           |        149 |         96 |         58 |        303 |
+| d:\MyQuantProject\Strategy_Pool\custom\mean_reversion_volatility.py                   | Python           |        146 |        159 |         47 |        352 |
+| d:\MyQuantProject\Strategy_Pool\custom\model_analytics.py                             | Python           |        315 |         29 |         45 |        389 |
+| d:\MyQuantProject\Strategy_Pool\custom\model_manager.py                               | Python           |        257 |         80 |         76 |        413 |
+| d:\MyQuantProject\Strategy_Pool\custom\xgboost_ml_strategy.py                         | Python           |        342 |        231 |        105 |        678 |
+| d:\MyQuantProject\Strategy_Pool\krus_grid_search.py                                   | Python           |         65 |          6 |          6 |         77 |
+| d:\MyQuantProject\Strategy_Pool\strategies.py                                         | Python           |        347 |        170 |         81 |        598 |
+| d:\MyQuantProject\create.py                                                           | Python           |         20 |          9 |          4 |         33 |
+| d:\MyQuantProject\data\best_strategies.json                                           | JSON             |          1 |          0 |          0 |          1 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_ACTIONABLE_FIXES_2026_03_23.md         | Markdown         |        158 |          0 |         58 |        216 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_ACTION_PLAN.md                         | Markdown         |        340 |          0 |         89 |        429 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_COMPREHENSIVE_v3.md                    | Markdown         |        689 |          0 |        157 |        846 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_DETAILED_APP_V2.md                     | Markdown         |        577 |          0 |        185 |        762 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_EXECUTIVE_SUMMARY.md                   | Markdown         |        262 |          0 |         90 |        352 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_FINAL_SUMMARY_2026_03_23.md            | Markdown         |        171 |          0 |         62 |        233 |
+| d:\MyQuantProject\docs\CODE_REVIEW\CODE_REVIEW_QUICK_REFERENCE.md                     | Markdown         |        141 |          0 |         45 |        186 |
+| d:\MyQuantProject\docs\CODE_REVIEW\COMPREHENSIVE_CODE_REVIEW_2026_03_23.md            | Markdown         |        435 |          0 |        131 |        566 |
+| d:\MyQuantProject\docs\DETAILED_GITHUB_TUTORIAL.md                                    | Markdown         |        474 |          0 |        181 |        655 |
+| d:\MyQuantProject\docs\FIXES\BEFORE_AFTER_COMPARISON.md                               | Markdown         |        279 |          0 |         75 |        354 |
+| d:\MyQuantProject\docs\FIXES\BUG_FIXES_REPORT_v2.1.1.md                               | Markdown         |        196 |          0 |         72 |        268 |
+| d:\MyQuantProject\docs\FIXES\CRITICAL_FIXES_CHECKLIST.md                              | Markdown         |        424 |          0 |        117 |        541 |
+| d:\MyQuantProject\docs\FIXES\FINAL_CHECKLIST.md                                       | Markdown         |         84 |          0 |         32 |        116 |
+| d:\MyQuantProject\docs\FIXES\FINAL_VERIFICATION_CHECKLIST.md                          | Markdown         |        251 |          0 |         67 |        318 |
+| d:\MyQuantProject\docs\GITHUB\GITHUB_QUICK_REFERENCE.md                               | Markdown         |        262 |          0 |         96 |        358 |
+| d:\MyQuantProject\docs\GITHUB\GITHUB_RELEASE_CHECKLIST.md                             | Markdown         |        165 |          0 |         67 |        232 |
+| d:\MyQuantProject\docs\GITHUB\GITHUB_WINDOWS_GUIDE.md                                 | Markdown         |        245 |          0 |         94 |        339 |
+| d:\MyQuantProject\docs\GITHUB\github_release.sh                                       | Shell Script     |        114 |          7 |         17 |        138 |
+| d:\MyQuantProject\docs\GUIDES\FILE_NAVIGATION_GUIDE.md                                | Markdown         |        343 |          0 |        106 |        449 |
+| d:\MyQuantProject\docs\GUIDES\QUICK_REFERENCE.md                                      | Markdown         |        165 |          0 |         67 |        232 |
+| d:\MyQuantProject\docs\GUIDES\xgboost_quick_start.py                                  | Python           |        108 |         20 |         32 |        160 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\ADVANCED_SIMULATOR_GUIDE.md                     | Markdown         |        299 |          0 |         87 |        386 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\DIVERGENCE_STRATEGY_OPTIMIZATION.md             | Markdown         |        257 |          0 |         75 |        332 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\FIXES_COMPLETED_SUMMARY.md                      | Markdown         |        211 |          0 |         64 |        275 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\GUI_ENHANCEMENT_FEATURES.md                     | Markdown         |        269 |          0 |         75 |        344 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\GUI_IMPLEMENTATION_SUMMARY.md                   | Markdown         |        291 |          0 |         86 |        377 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\GUI_INDENTATION_FIX_SUMMARY.md                  | Markdown         |         60 |          0 |         22 |         82 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\GUI_QUICK_START.md                              | Markdown         |        196 |          0 |         93 |        289 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\IMPLEMENTATION_SUMMARY.md                       | Markdown         |        286 |          0 |         83 |        369 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\LAYOUT_OPTIMIZATION_SUMMARY.md                  | Markdown         |        125 |          0 |         43 |        168 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\MEAN_REVERSION_STRATEGY_GUIDE.md                | Markdown         |        229 |          0 |        112 |        341 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\MODIFICATIONS_SUMMARY.md                        | Markdown         |        118 |          0 |         39 |        157 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\NEW_STRATEGY_IMPLEMENTATION.md                  | Markdown         |        327 |          0 |         84 |        411 |
+| d:\MyQuantProject\docs\IMPLEMENTATION\QUICK_START_ADVANCED_SIMULATOR.md               | Markdown         |        172 |          0 |         58 |        230 |
+| d:\MyQuantProject\docs\NAVIGATION_MAP.md                                              | Markdown         |        200 |          0 |         61 |        261 |
+| d:\MyQuantProject\docs\PROJECT_MANAGEMENT\COMPLETION_CHECKLIST.md                     | Markdown         |        243 |          0 |         76 |        319 |
+| d:\MyQuantProject\docs\PROJECT_MANAGEMENT\DEPLOYMENT_CHECKLIST.md                     | Markdown         |        288 |          0 |         86 |        374 |
+| d:\MyQuantProject\docs\PROJECT_MANAGEMENT\FILE_STRUCTURE.md                           | Markdown         |         57 |          0 |         17 |         74 |
+| d:\MyQuantProject\docs\PROJECT_MANAGEMENT\REQUIREMENTS_VERIFICATION.md                | Markdown         |        202 |          0 |         63 |        265 |
+| d:\MyQuantProject\docs\QUICKSTART.md                                                  | Markdown         |        164 |          0 |         59 |        223 |
+| d:\MyQuantProject\docs\QUICK_REFERENCE.md                                             | Markdown         |        223 |          0 |         88 |        311 |
+| d:\MyQuantProject\docs\RELEASES\RELEASE_FEATURES_v2.1.0.md                            | Markdown         |        377 |          0 |        106 |        483 |
+| d:\MyQuantProject\docs\RELEASES\RELEASE_FILES_SUMMARY.md                              | Markdown         |        228 |          0 |         65 |        293 |
+| d:\MyQuantProject\docs\RELEASES\RELEASE_v2026.0.0.md                                  | Markdown         |        182 |          0 |         73 |        255 |
+| d:\MyQuantProject\docs\STRATEGIES\MEAN_REVERSION\MEAN_REVERSION_DELIVERY_SUMMARY.md   | Markdown         |        285 |          0 |         85 |        370 |
+| d:\MyQuantProject\docs\STRATEGIES\MEAN_REVERSION\MEAN_REVERSION_ENHANCEMENT_GUIDE.md  | Markdown         |        326 |          0 |        102 |        428 |
+| d:\MyQuantProject\docs\STRATEGIES\MEAN_REVERSION\MEAN_REVERSION_IMPROVEMENT_REPORT.md | Markdown         |        418 |          0 |        110 |        528 |
+| d:\MyQuantProject\docs\STRATEGIES\MEAN_REVERSION\MEAN_REVERSION_QUICK_START.md        | Markdown         |        318 |          0 |         85 |        403 |
+| d:\MyQuantProject\docs\XGBOOST\DEPLOYMENT_CHECKLIST.md                                | Markdown         |        288 |          0 |         86 |        374 |
+| d:\MyQuantProject\docs\XGBOOST\FINAL_VERIFICATION.md                                  | Markdown         |        244 |          0 |         70 |        314 |
+| d:\MyQuantProject\docs\XGBOOST\QUICK_REFERENCE.md                                     | Markdown         |        165 |          0 |         67 |        232 |
+| d:\MyQuantProject\docs\XGBOOST\README.md                                              | Markdown         |         42 |          0 |         15 |         57 |
+| d:\MyQuantProject\docs\XGBOOST\XGBOOST_SYSTEM_SUMMARY.md                              | Markdown         |        353 |          0 |        116 |        469 |
+| d:\MyQuantProject\docs\krus_grid_search_results.csv                                   | CSV              |      4,051 |          0 |          1 |      4,052 |
+| d:\MyQuantProject\download_sp500_nasdaq100.py                                         | Python           |        167 |         30 |         31 |        228 |
+| d:\MyQuantProject\main.py                                                             | Python           |         22 |          5 |          8 |         35 |
+| d:\MyQuantProject\requirements.txt                                                    | pip requirements |          9 |         14 |          8 |         31 |
+| d:\MyQuantProject\run_gui.py                                                          | Python           |          8 |          2 |          3 |         13 |
+| d:\MyQuantProject\setup.py                                                            | Python           |         81 |          5 |          4 |         90 |
+| d:\MyQuantProject\shared\__init__.py                                                  | Python           |          2 |          1 |          2 |          5 |
+| d:\MyQuantProject\shared\memory_manager.py                                            | Python           |         53 |         32 |         15 |        100 |
+| d:\MyQuantProject\tests\ADVANCED_SIMULATOR_README.py                                  | Python           |          1 |        148 |          2 |        151 |
+| d:\MyQuantProject\tests\comprehensive_indent_fix.py                                   | Python           |         53 |         17 |         15 |         85 |
+| d:\MyQuantProject\tests\debug_krus.py                                                 | Python           |         46 |          4 |         11 |         61 |
+| d:\MyQuantProject\tests\debug_krus2.py                                                | Python           |         30 |          3 |          6 |         39 |
+| d:\MyQuantProject\tests\examples\xgboost_quick_start.py                               | Python           |        108 |         20 |         32 |        160 |
+| d:\MyQuantProject\tests\fix_chart_indentation.py                                      | Python           |         23 |          9 |         11 |         43 |
+| d:\MyQuantProject\tests\fix_else_block.py                                             | Python           |         14 |          6 |          6 |         26 |
+| d:\MyQuantProject\tests\fix_indentation.py                                            | Python           |         14 |          8 |          9 |         31 |
+| d:\MyQuantProject\tests\fix_indentation_error.py                                      | Python           |         28 |          9 |          9 |         46 |
+| d:\MyQuantProject\tests\fix_remaining_indent.py                                       | Python           |         24 |         12 |          7 |         43 |
+| d:\MyQuantProject\tests\fix_simple_mode_indent.py                                     | Python           |         35 |         10 |         14 |         59 |
+| d:\MyQuantProject\tests\smart_indent_fix.py                                           | Python           |         32 |         15 |         13 |         60 |
+| d:\MyQuantProject\tests\test_advanced_simple.py                                       | Python           |         58 |          9 |         15 |         82 |
+| d:\MyQuantProject\tests\test_advanced_simulator.py                                    | Python           |        165 |         25 |         41 |        231 |
+| d:\MyQuantProject\tests\test_backtest_charts.py                                       | Python           |        151 |         23 |         42 |        216 |
+| d:\MyQuantProject\tests\test_company_info.py                                          | Python           |         32 |          6 |         13 |         51 |
+| d:\MyQuantProject\tests\test_fixed_backtest.py                                        | Python           |         32 |          2 |          6 |         40 |
+| d:\MyQuantProject\tests\test_fixes.py                                                 | Python           |        135 |         21 |         32 |        188 |
+| d:\MyQuantProject\tests\test_mean_reversion_enhancement.py                            | Python           |        257 |         50 |         89 |        396 |
+| d:\MyQuantProject\tests\test_mean_reversion_fix.py                                    | Python           |         49 |          6 |         11 |         66 |
+| d:\MyQuantProject\tests\test_mean_reversion_strategy.py                               | Python           |        176 |         28 |         49 |        253 |
+| d:\MyQuantProject\tests\test_new_features.py                                          | Python           |        148 |         15 |         37 |        200 |
+| d:\MyQuantProject\tests\test_system.py                                                | Python           |         65 |          7 |         17 |         89 |
+| d:\MyQuantProject\tests\test_xgboost_system.py                                        | Python           |        276 |         58 |        121 |        455 |
+| d:\MyQuantProject\tests\verify_gui.py                                                 | Python           |         20 |          5 |          8 |         33 |
+| d:\MyQuantProject\tests\verify_gui_features.py                                        | Python           |        130 |         19 |         33 |        182 |
+| d:\MyQuantProject\tests\verify_gui_xgboost.py                                         | Python           |        124 |         20 |         25 |        169 |
+| d:\MyQuantProject\utils\__init__.py                                                   | Python           |         11 |          1 |          2 |         14 |
+| d:\MyQuantProject\utils\safe_access.py                                                | Python           |         37 |         79 |         11 |        127 |
+| d:\MyQuantProject\utils\type_validator.py                                             | Python           |         28 |         36 |         13 |         77 |
+| Total                                                                                 |                  |     27,424 |      2,334 |      6,856 |     36,614 |
++---------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+

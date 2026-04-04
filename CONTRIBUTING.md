@@ -289,7 +289,7 @@ Fixes #42
 
 - **GitHub Issues**: 用于 Bug 和功能请求
 - **Discussions**: 用于一般讨论和问题
-- **Email**: your@email.com
+- **Email**: zesheng@kth.se
 
 ---
 

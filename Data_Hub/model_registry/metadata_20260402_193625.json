@@ -1,0 +1,17 @@
+{
+  "model_id": "xgboost_20260402_193625",
+  "features_list": [
+    "momentum_10",
+    "rsi_14",
+    "bollinger_width",
+    "volume_surge",
+    "volatility",
+    "price_position",
+    "log_return"
+  ],
+  "params": {},
+  "validation_accuracy": 0.5509259259259259,
+  "simulation_return": 0.36058457724709814,
+  "training_time": 0.6941349506378174,
+  "timestamp": "2026-04-02T19:36:25.492233"
+}

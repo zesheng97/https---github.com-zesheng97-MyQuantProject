@@ -6,6 +6,7 @@
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
@@ -28,29 +29,60 @@ from Strategy_Pool.strategies import STRATEGIES
 from Engine_Matrix.backtest_engine import BacktestEngine, BacktestConfig
 from Engine_Matrix.advanced_simulator import AdvancedExchangeSimulator, ExchangeConfig
 from Analytics.reporters.company_info_manager import CompanyInfoManager
+from Analytics.reporters.macro_analyzer import (
+    INDEX_MAP, RATE_MAP,
+    fetch_index_data, get_margin_debt_series, compute_yoy_change,
+    align_and_resample_monthly, compute_correlation_matrix,
+    compute_rolling_correlation, detect_divergence_points, compute_lead_lag,
+    detect_vix_spikes, classify_vix_phase,
+    compute_vix_entry_signals, compute_phase_forward_returns,
+    VIX_SPIKE_THRESHOLD, VIX_PEAK_THRESHOLD,
+    MACRO_INDICATORS_MAP, fetch_multi_indicators,
+)
 
 # =========== 页面配置 ===========
 st.set_page_config(page_title="Personal Quant Lab", layout="wide")
 st.title("🔬 个人量化实验室 | Personal Quant Lab - Parameterized Backtest System")
 
+# =========== 自动数据更新检查 ===========
+from Analytics.reporters.macro_analyzer import should_update_data, set_data_update_date, get_us_eastern_date
+if should_update_data():
+    st.info(f"⏳ 检测到新的一天（{get_us_eastern_date()}），正在自动刷新所有数据...")
+    # 标记force_refresh为True，这样会刷新所有缓存数据
+    st.session_state['auto_refresh_all'] = True
+    set_data_update_date()
+else:
+    st.session_state['auto_refresh_all'] = False
+
 # =========== 记忆系统（保存最好的策略配置） ===========
 memory_file = os.path.join(os.path.dirname(__file__), '..', 'Data_Hub', 'storage', '.strategy_memory.json')
+vix_strategy_file = os.path.join(os.path.dirname(__file__), '..', 'Data_Hub', 'storage', '.vix_strategy_memory.json')
 
-def load_memory():
-    """加载策略记忆"""
-    if os.path.exists(memory_file):
+
+def load_json_store(file_path):
+    """加载通用 JSON 存储"""
+    if os.path.exists(file_path):
         try:
-            with open(memory_file, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
     return {}
 
+
+def save_json_store(file_path, payload):
+    """保存通用 JSON 存储"""
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+
+def load_memory():
+    """加载策略记忆"""
+    return load_json_store(memory_file)
+
 def save_memory(memory):
     """保存策略记忆"""
-    os.makedirs(os.path.dirname(memory_file), exist_ok=True)
-    with open(memory_file, 'w', encoding='utf-8') as f:
-        json.dump(memory, f, ensure_ascii=False, indent=2)
+    save_json_store(memory_file, memory)
 
 def update_best_strategy(symbol, strategy_name, params, annual_return):
     """更新某个标的的最好策略记录"""
@@ -80,6 +112,97 @@ def get_best_strategy(symbol):
     memory = load_memory()
     return memory.get(symbol, None)
 
+
+def load_vix_strategy_memory():
+    """加载 VIX 子界面的已保存结果"""
+    data = load_json_store(vix_strategy_file)
+    return data if isinstance(data, dict) else {}
+
+
+def save_vix_strategy_memory(memory):
+    """保存 VIX 子界面的结果库"""
+    save_json_store(vix_strategy_file, memory)
+
+
+def save_vix_backtest_result(result_name, payload):
+    """保存单个 VIX 回测结果"""
+    memory = load_vix_strategy_memory()
+    memory[result_name] = payload
+    save_vix_strategy_memory(memory)
+
+
+def ensure_vix_session_defaults():
+    """初始化 VIX 子界面的默认参数"""
+    defaults = {
+        "vix_spike_threshold": int(VIX_SPIKE_THRESHOLD),
+        "vix_peak_threshold": int(VIX_PEAK_THRESHOLD),
+        "vix_pullback_pct": 10,
+        "vix_confirmation_days": 1,
+        "vix_min_spike_duration": 0,
+        "vix_min_peak_vix": int(VIX_PEAK_THRESHOLD),
+        "vix_fwd": "21日",
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def get_corr_pair_extremes(corr_matrix: pd.DataFrame):
+    """提取相关性矩阵上三角中的极值及其对应标的对"""
+    if corr_matrix is None or corr_matrix.empty or corr_matrix.shape[0] < 2:
+        return None
+
+    upper_triangle = corr_matrix.where(
+        np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+    ).stack()
+    if upper_triangle.empty:
+        return None
+
+    min_pair = upper_triangle.idxmin()
+    max_pair = upper_triangle.idxmax()
+    return {
+        "average": float(upper_triangle.mean()),
+        "max_value": float(upper_triangle.loc[max_pair]),
+        "max_pair": max_pair,
+        "min_value": float(upper_triangle.loc[min_pair]),
+        "min_pair": min_pair,
+    }
+
+
+def build_vix_trade_plan(asset_label, params, signal_summary, best_phase_label=None):
+    """生成可直接阅读的 VIX 交易战略摘要"""
+    lines = [
+        f"交易对象：{asset_label}",
+        f"观察条件：VIX > {params['spike_threshold']:.0f} 进入高波动观察区。",
+        f"峰值条件：VIX > {params['peak_threshold']:.0f} 视为极端恐慌。",
+        (
+            f"入场条件：VIX 从本轮峰值回落至少 {params['pullback_pct']}%，"
+            f"并连续 {params['confirmation_days']} 个交易日确认后入场。"
+        ),
+        (
+            f"样本过滤：事件至少持续 {params['min_spike_duration']} 天，"
+            f"峰值 VIX 至少达到 {params['min_peak_vix']:.0f}。"
+        ),
+        f"持有计划：信号触发后持有 {params['forward_window_label']}（约 {params['forward_days']} 个交易日）。",
+    ]
+
+    if best_phase_label:
+        lines.append(f"阶段偏好：当前参数下历史均值最优阶段为 {best_phase_label}。")
+
+    if signal_summary.get("sample_count", 0) > 0:
+        lines.append(
+            f"历史统计：样本 {signal_summary['sample_count']} 次，"
+            f"平均收益 {signal_summary['avg_return']:.2f}%，"
+            f"胜率 {signal_summary['win_rate']:.1f}%。"
+        )
+        lines.append(
+            f"尾部风险：该持有窗口历史最差单次结果为 {signal_summary['worst_return']:.2f}%。"
+        )
+    else:
+        lines.append("历史统计：当前筛选条件下暂无足够样本，建议放宽过滤条件后再评估。")
+
+    return "\n".join(lines)
+
 # =========== 数据索引 ===========
 storage_dir = os.path.join(os.path.dirname(__file__), '..', 'Data_Hub', 'storage')
 try:
@@ -88,6 +211,1222 @@ try:
 except FileNotFoundError:
     st.error("❌ 未找到存储目录，请确保已运行 main.py 下载数据。")
     st.stop()
+
+# =========== 侧边栏：模式切换 ===========
+st.sidebar.markdown("### 🧭 功能模式")
+app_mode = st.sidebar.radio(
+    "",
+    ["📈 回测分析", "🌐 宏观分析"],
+    key="app_mode",
+    horizontal=False,
+)
+st.sidebar.divider()
+
+# =========== 宏观分析面板 ===========
+if app_mode == "🌐 宏观分析":
+    # ---- 侧边栏控件（宏观模式） ----
+    st.sidebar.header("🌐 宏观分析设置")
+
+    # 全局指标选择（所有Tab共用）
+    all_indicators = sorted(list(MACRO_INDICATORS_MAP.keys()) + ["FINRA 融资余额"])
+    default_indicators = ["S&P 500", "NASDAQ 100", "VIX (恐慌指数)", "10Y美债收益率", "黄金(GLD)", "FINRA 融资余额"]
+    default_selected = [i for i in default_indicators if i in all_indicators]
+    
+    st.sidebar.markdown("##### 📊 全局指标选择（所有分析Tab通用）")
+    global_indicators = st.sidebar.multiselect(
+        "选择用于所有分析的指标",
+        all_indicators,
+        default=default_selected,
+        key="global_macro_indicators",
+    )
+    
+    st.sidebar.divider()
+
+    all_index_labels = list(INDEX_MAP.keys())
+    all_rate_labels  = list(RATE_MAP.keys())
+    selected_indices = st.sidebar.multiselect(
+        "选择大盘指数",
+        all_index_labels,
+        default=["S&P 500", "NASDAQ 100", "NASDAQ Composite", "Dow Jones"],
+        key="macro_indices",
+    )
+    selected_rates = st.sidebar.multiselect(
+        "选择利率/汇率",
+        all_rate_labels,
+        default=["10Y国债收益率"],
+        key="macro_rates",
+    )
+    macro_period = st.sidebar.selectbox(
+        "历史数据周期",
+        ["3y", "5y", "10y", "15y", "20y", "max"],
+        index=2,
+        key="macro_period",
+    )
+    rolling_window = st.sidebar.slider(
+        "滚动相关窗口（月）",
+        min_value=3, max_value=24, value=12, step=1,
+        key="macro_rolling",
+    )
+    lag_max = st.sidebar.slider(
+        "领先/滞后检测范围（月）",
+        min_value=1, max_value=12, value=6, step=1,
+        key="macro_lag",
+    )
+    show_margin_debt = st.sidebar.checkbox("显示 FINRA 融资余额", value=True, key="macro_margin")
+    force_refresh_macro = st.sidebar.button("🔄 刷新数据", key="macro_refresh")
+    
+    # 如果系统检测到新的一天，自动刷新
+    if st.session_state.get('auto_refresh_all', False):
+        force_refresh_macro = True
+
+    # ---- 主区域 ----
+    st.title("🌐 宏观市场分析 | Macro Market Analysis")
+    st.caption("数据源：Yahoo Finance（大盘指数/利率）+ FINRA（融资余额：内置2002-2024年关键节点）")
+
+    if not selected_indices and not selected_rates:
+        st.warning("请在左侧至少选择一个大盘指数或利率指标。")
+        st.stop()
+
+    tickers_to_fetch = [INDEX_MAP[l] for l in selected_indices] + [RATE_MAP[l] for l in selected_rates]
+    ticker_label_map = {**{v: k for k, v in INDEX_MAP.items()}, **{v: k for k, v in RATE_MAP.items()}}
+
+    with st.spinner("⏳ 正在加载宏观数据…"):
+        raw_data = fetch_index_data(tickers_to_fetch, period=macro_period, force_refresh=force_refresh_macro)
+
+    if not raw_data:
+        st.error("❌ 数据加载失败，请检查网络连接或稍后重试。")
+        st.stop()
+
+    monthly_df = align_and_resample_monthly(raw_data)
+    monthly_df.columns = [ticker_label_map.get(c, c) for c in monthly_df.columns]
+    monthly_norm = monthly_df.div(monthly_df.iloc[0]) * 100
+
+    # Tab 布局
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📊 大盘走势",
+        "📉 融资余额 (Margin Debt)",
+        "🔗 相关性矩阵",
+        "⏱ 领先/滞后分析",
+        "⚡ 差异性拐点",
+        "🚨 VIX 入场策略",
+    ])
+
+    # ------------------------------------------------------------------
+    # Tab 1：大盘走势（归一化 & 绝对价格）
+    # ------------------------------------------------------------------
+    with tab1:
+        st.subheader("大盘指数走势（月度收盘，基期=100归一化）")
+
+        if monthly_norm.empty:
+            st.warning("无可用数据。")
+        else:
+            fig_norm = go.Figure()
+            for col in monthly_norm.columns:
+                fig_norm.add_trace(go.Scatter(
+                    x=monthly_norm.index, y=monthly_norm[col],
+                    mode="lines", name=col,
+                ))
+            fig_norm.update_layout(
+                template="plotly_dark", height=480,
+                hovermode="x unified",
+                yaxis_title="归一化指数（基期=100）",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig_norm, width="stretch")
+
+            st.subheader("年化收益率对比（基于月度收盘价）")
+            pct_change = monthly_df.pct_change().dropna()
+            annual_returns = (((1 + pct_change).prod()) ** (12 / len(pct_change)) - 1) * 100
+            fig_bar = go.Figure(go.Bar(
+                x=annual_returns.index,
+                y=annual_returns.values.round(2),
+                marker_color=["green" if v >= 0 else "red" for v in annual_returns.values],
+                text=[f"{v:.1f}%" for v in annual_returns.values],
+                textposition="outside",
+            ))
+            fig_bar.update_layout(
+                template="plotly_dark", height=350,
+                yaxis_title="年化收益率 (%)",
+                showlegend=False,
+            )
+            st.plotly_chart(fig_bar, width="stretch")
+
+            with st.expander("📋 月度收盘数据", expanded=False):
+                st.dataframe(
+                    monthly_df.tail(36).sort_index(ascending=False).style.format("{:.2f}"),
+                    height=350,
+                )
+
+    # ------------------------------------------------------------------
+    # Tab 2：FINRA 融资余额
+    # ------------------------------------------------------------------
+    with tab2:
+        st.subheader("FINRA Margin Debt — 美股整体融资余额")
+        st.caption(
+            "融资余额与大盘呈顺周期性：牛市加速阶段往往伴随抛物线式飙升；"
+            "同比增速见顶回落是大型顶部结构的左侧预警信号；"
+            "急剧去杠杆（Margin Call 连环平仓）是暴跌最陡峭阶段的核心催化剂。"
+        )
+
+        margin_series = get_margin_debt_series()
+        yoy_series    = compute_yoy_change(margin_series)
+
+        fig_md = make_subplots(
+            rows=2, cols=1, shared_xaxes=True,
+            subplot_titles=("融资余额（百万美元）", "同比变化率 YoY (%)"),
+            vertical_spacing=0.12,
+        )
+        fig_md.add_trace(
+            go.Scatter(x=margin_series.index, y=margin_series.values,
+                       mode="lines+markers", name="Margin Debt",
+                       line=dict(color="#EF6C00", width=2)),
+            row=1, col=1,
+        )
+        # 叠加 SP500（若已选择）
+        sp500_ticker = INDEX_MAP.get("S&P 500", "^GSPC")
+        if sp500_ticker in raw_data:
+            sp_monthly = raw_data[sp500_ticker]["close"].resample("ME").last()
+            sp_norm = sp_monthly / sp_monthly.iloc[0] * margin_series.iloc[0]
+            fig_md.add_trace(
+                go.Scatter(x=sp_norm.index, y=sp_norm.values,
+                           mode="lines", name="S&P 500（叠加，左轴等比）",
+                           line=dict(color="#42A5F5", width=1.5, dash="dash")),
+                row=1, col=1,
+            )
+
+        yoy_clean = yoy_series.dropna()
+        colors_yoy = ["green" if v >= 0 else "red" for v in yoy_clean.values]
+        fig_md.add_trace(
+            go.Bar(x=yoy_clean.index, y=yoy_clean.values,
+                   name="YoY %", marker_color=colors_yoy),
+            row=2, col=1,
+        )
+        # 高风险区域参考线
+        fig_md.add_hline(y=30, row=2, col=1,
+                         line=dict(color="red", dash="dot"), annotation_text="高风险阈值 30%")
+        fig_md.add_hline(y=-20, row=2, col=1,
+                         line=dict(color="#66BB6A", dash="dot"), annotation_text="去杠杆区域 -20%")
+
+        fig_md.update_layout(template="plotly_dark", height=600, hovermode="x unified")
+        st.plotly_chart(fig_md, width="stretch")
+
+        st.subheader("当前市场风险状态判断")
+        latest_yoy = yoy_clean.dropna().iloc[-1] if not yoy_clean.empty else 0
+        latest_debt = margin_series.iloc[-1]
+        debt_90th = margin_series.quantile(0.90)
+        if latest_yoy > 30 and latest_debt > debt_90th:
+            st.error("🔴 **高风险状态**：融资余额同比 > 30% 且处于历史90分位以上，建议降低仓位/配置对冲。")
+        elif latest_yoy < -20:
+            st.success("🟢 **去杠杆后修复期**：融资余额同比降幅 > 20%，历史上对应底部区域，可关注反弹机会。")
+        else:
+            st.info(f"🟡 **中性状态**：融资余额同比 {latest_yoy:.1f}%，绝对值 ${latest_debt:,.0f}M，暂无极端信号。")
+
+        with st.expander("📋 原始数据", expanded=False):
+            df_md_display = pd.DataFrame({"Margin Debt (M USD)": margin_series, "YoY %": yoy_series.round(2)})
+            st.dataframe(df_md_display.sort_index(ascending=False), height=350)
+
+    # ------------------------------------------------------------------
+    # Tab 3：n×n 相关性矩阵（灵活多指标）
+    # ------------------------------------------------------------------
+    with tab3:
+        st.subheader("n×n 宏观指标相关性矩阵")
+        st.caption(
+            "选择任意数量的宏观指标（股票、债券、商品、汇率等），自动计算月度收益率的相关性矩阵。"
+            "支持 25+ 常用指标、FINRA 融资余额、以及 Term Spread(10Y-2Y)。"
+        )
+
+        # ---- 侧边栏：指标多选 ----
+        st.sidebar.markdown("##### 🔗 相关性矩阵指标选择")
+        all_indicators = sorted(list(MACRO_INDICATORS_MAP.keys()) + ["FINRA 融资余额", "Term Spread(10Y-2Y)"])
+        
+        # 默认选中的指标
+        default_indicators = [
+            "S&P 500", "NASDAQ 100", "VIX (恐慌指数)", 
+            "10Y美债收益率", "黄金(GLD)", "FINRA 融资余额"
+        ]
+        default_selected = [i for i in default_indicators if i in all_indicators]
+        
+        selected_corr_indicators = st.sidebar.multiselect(
+            "选择指标（可选任意组合）",
+            all_indicators,
+            default=default_selected,
+            key="corr_indicators",
+        )
+
+        if not selected_corr_indicators or len(selected_corr_indicators) < 2:
+            st.warning("请选择至少 2 个指标以计算相关性矩阵。")
+        else:
+            # ---- 获取数据 ----
+            with st.spinner(f"⏳ 正在加载 {len(selected_corr_indicators)} 个指标的数据..."):
+                try:
+                    corr_data = fetch_multi_indicators(
+                        selected_corr_indicators,
+                        period=macro_period,
+                        force_refresh=force_refresh_macro,
+                        daily_to_monthly=True,
+                    )
+                except Exception as e:
+                    st.error(f"❌ 数据加载失败: {e}")
+                    corr_data = None
+
+            if corr_data is None or corr_data.empty:
+                st.error("❌ 无法加载选定指标的数据，请检查网络连接或指标代码。")
+            elif corr_data.shape[0] < 2:
+                st.warning("⚠️ 数据不足（少于 2 个月份），无法计算相关性。")
+            else:
+                # ---- 相关系数方法选择 ----
+                corr_method = st.radio(
+                    "相关系数方法",
+                    ["pearson", "spearman", "kendall"],
+                    index=0, horizontal=True, key="corr_matrix_method"
+                )
+
+                # ---- 计算相关性矩阵 ----
+                corr_matrix = compute_correlation_matrix(corr_data, method=corr_method)
+
+                # ---- 显示热力图 ----
+                st.markdown(f"##### {corr_method.capitalize()} 相关系数矩阵（{len(selected_corr_indicators)}×{len(selected_corr_indicators)}）")
+                
+                import plotly.express as px
+                fig_heatmap = px.imshow(
+                    corr_matrix,
+                    text_auto=".2f",
+                    color_continuous_scale="RdBu_r",
+                    zmin=-1, zmax=1,
+                    labels=dict(color="相关系数"),
+                    title=f"{corr_method.capitalize()} 相关系数矩阵（基于月度收益率）",
+                    aspect="auto",
+                )
+                fig_heatmap.update_layout(
+                    template="plotly_dark",
+                    height=max(400, 50 * len(selected_corr_indicators)),
+                    width=None,
+                    xaxis_tickangle=-45,
+                )
+                st.plotly_chart(fig_heatmap, width="stretch")
+
+                # ---- 相关性统计摘要 ----
+                st.markdown("##### 📊 相关性统计摘要")
+                corr_summary = get_corr_pair_extremes(corr_matrix)
+                col_stats1, col_stats2, col_stats3 = st.columns(3)
+                if corr_summary is None:
+                    with col_stats1:
+                        st.metric("平均相关系数", "N/A")
+                    with col_stats2:
+                        st.metric("最大相关系数", "N/A")
+                    with col_stats3:
+                        st.metric("最小相关系数", "N/A")
+                else:
+                    with col_stats1:
+                        st.metric("平均相关系数", f"{corr_summary['average']:.3f}")
+                    with col_stats2:
+                        st.metric("最大相关系数", f"{corr_summary['max_value']:.3f}")
+                        st.caption(f"对应标的：{corr_summary['max_pair'][0]} ↔ {corr_summary['max_pair'][1]}")
+                    with col_stats3:
+                        st.metric("最小相关系数", f"{corr_summary['min_value']:.3f}")
+                        st.caption(f"对应标的：{corr_summary['min_pair'][0]} ↔ {corr_summary['min_pair'][1]}")
+
+                # ---- 两两滚动相关性深度分析 ----
+                st.markdown("##### 🔍 两两指标：滚动相关性深度分析")
+                if len(selected_corr_indicators) >= 2:
+                    rc_col1, rc_col2 = st.columns(2)
+                    with rc_col1:
+                        roll_a = st.selectbox("指标 A", selected_corr_indicators, index=0, key="roll_a_flex")
+                    with rc_col2:
+                        roll_b = st.selectbox(
+                            "指标 B",
+                            selected_corr_indicators,
+                            index=min(1, len(selected_corr_indicators) - 1),
+                            key="roll_b_flex"
+                        )
+
+                    if roll_a != roll_b and roll_a in corr_data.columns and roll_b in corr_data.columns:
+                        rc_series = compute_rolling_correlation(
+                            corr_data[roll_a], corr_data[roll_b], window=rolling_window
+                        )
+                        if not rc_series.empty:
+                            fig_rc = go.Figure()
+                            fig_rc.add_trace(go.Scatter(
+                                x=rc_series.index, y=rc_series.values,
+                                mode="lines", name=f"滚动相关（{rolling_window}月）",
+                                line=dict(color="#AB47BC", width=2),
+                            ))
+                            fig_rc.add_hline(y=0, line=dict(color="gray", dash="dot"))
+                            fig_rc.add_hline(y=0.7, line=dict(color="#66BB6A", dash="dot"),
+                                             annotation_text="强正相关 0.7")
+                            fig_rc.add_hline(y=-0.7, line=dict(color="#EF5350", dash="dot"),
+                                             annotation_text="强负相关 -0.7")
+                            fig_rc.update_layout(
+                                template="plotly_dark", height=380,
+                                yaxis_title="相关系数", hovermode="x unified",
+                                title=f"{roll_a} vs {roll_b} — 滚动{rolling_window}月相关性演化",
+                            )
+                            st.plotly_chart(fig_rc, width="stretch")
+
+                # ---- 相关性矩阵数据表 ----
+                with st.expander("📋 完整相关系数矩阵数据", expanded=False):
+                    st.dataframe(corr_matrix.style.format("{:.4f}").highlight_max(color="lightgreen").highlight_min(color="lightcoral"), height=400)
+
+    # ------------------------------------------------------------------
+    # Tab 4：领先/滞后分析
+    # ------------------------------------------------------------------
+    with tab4:
+        st.subheader("领先/滞后相关性分析（月度）")
+        st.caption(
+            "正 Lag = 指标A领先指标B；负 Lag = 指标A滞后指标B。"
+            "峰值对应的 lag 即为两者之间的典型时间差（拐点先后顺序）。"
+        )
+
+        # 使用全局指标或传统月度数据
+        use_global = st.radio("数据源选择", ["使用全局指标", "使用传统指数/利率"], horizontal=True, key="tab4_data_source")
+        
+        if use_global == "使用全局指标":
+            if not global_indicators or len(global_indicators) < 2:
+                st.warning("请先在全局指标选择中至少选择 2 个指标。")
+            else:
+                with st.spinner("⏳ 加载全局指标数据..."):
+                    try:
+                        ll_data = fetch_multi_indicators(global_indicators, period=macro_period, force_refresh=force_refresh_macro)
+                    except Exception as e:
+                        st.error(f"❌ 数据加载失败: {e}")
+                        ll_data = None
+                
+                if ll_data is not None and not ll_data.empty:
+                    ll_opts = list(ll_data.columns)
+                    llc1, llc2 = st.columns(2)
+                    with llc1:
+                        ll_a = st.selectbox("指标 A（领先方向）", ll_opts, index=0, key="ll_a_global")
+                    with llc2:
+                        ll_b = st.selectbox("指标 B", ll_opts,
+                                            index=min(1, len(ll_opts)-1), key="ll_b_global")
+
+                    if ll_a != ll_b:
+                        ll_df = compute_lead_lag(
+                            ll_data[ll_a].dropna(),
+                            ll_data[ll_b].dropna(),
+                            max_lag=lag_max,
+                        )
+                        best_lag = ll_df.loc[ll_df["correlation"].abs().idxmax()]
+
+                        fig_ll = go.Figure()
+                        fig_ll.add_trace(go.Bar(
+                            x=ll_df["lag_months"],
+                            y=ll_df["correlation"],
+                            marker_color=["#42A5F5" if v >= 0 else "#EF5350"
+                                          for v in ll_df["correlation"].fillna(0)],
+                            name="相关系数",
+                        ))
+                        fig_ll.update_layout(
+                            template="plotly_dark", height=380,
+                            xaxis_title="领先月数（正=A领先B）",
+                            yaxis_title="相关系数",
+                            title=f"{ll_a} vs {ll_b} 领先/滞后分析",
+                        )
+                        st.plotly_chart(fig_ll, width="stretch")
+
+                        lag_val = int(best_lag["lag_months"])
+                        corr_val = best_lag["correlation"]
+                        if lag_val > 0:
+                            st.success(f"📌 **{ll_a}** 领先 **{ll_b}** 约 **{lag_val} 个月**（峰值相关：{corr_val:.3f}）")
+                        elif lag_val < 0:
+                            st.success(f"📌 **{ll_a}** 滞后 **{ll_b}** 约 **{abs(lag_val)} 个月**（峰值相关：{corr_val:.3f}）")
+                        else:
+                            st.info(f"📌 **{ll_a}** 与 **{ll_b}** 无显著领先/滞后关系（峰值相关：{corr_val:.3f}，lag=0）")
+
+                        with st.expander("📋 详细数据", expanded=False):
+                            st.dataframe(ll_df.set_index("lag_months").style.format("{:.4f}"))
+        
+        else:  # 使用传统数据
+            if monthly_df.shape[1] < 2:
+                st.info("请选择至少 2 个指标。")
+            else:
+                ll_opts = list(monthly_df.columns)
+                llc1, llc2 = st.columns(2)
+                with llc1:
+                    ll_a = st.selectbox("指标 A（领先方向）", ll_opts, index=0, key="ll_a")
+                with llc2:
+                    ll_b = st.selectbox("指标 B", ll_opts,
+                                        index=min(1, len(ll_opts)-1), key="ll_b")
+
+                if ll_a != ll_b:
+                    ll_df = compute_lead_lag(
+                        monthly_df[ll_a].resample("ME").last().dropna(),
+                        monthly_df[ll_b].resample("ME").last().dropna(),
+                        max_lag=lag_max,
+                    )
+                    best_lag = ll_df.loc[ll_df["correlation"].abs().idxmax()]
+
+                    fig_ll = go.Figure()
+                    fig_ll.add_trace(go.Bar(
+                        x=ll_df["lag_months"],
+                        y=ll_df["correlation"],
+                        marker_color=["#42A5F5" if v >= 0 else "#EF5350"
+                                      for v in ll_df["correlation"].fillna(0)],
+                        name="相关系数",
+                    ))
+                    fig_ll.update_layout(
+                        template="plotly_dark", height=380,
+                        xaxis_title="领先月数（正=A领先B）",
+                        yaxis_title="相关系数",
+                        title=f"{ll_a} vs {ll_b} 领先/滞后分析",
+                    )
+                    st.plotly_chart(fig_ll, width="stretch")
+
+                    lag_val = int(best_lag["lag_months"])
+                    corr_val = best_lag["correlation"]
+                    if lag_val > 0:
+                        st.success(f"📌 **{ll_a}** 领先 **{ll_b}** 约 **{lag_val} 个月**（峰值相关：{corr_val:.3f}）")
+                    elif lag_val < 0:
+                        st.success(f"📌 **{ll_a}** 滞后 **{ll_b}** 约 **{abs(lag_val)} 个月**（峰值相关：{corr_val:.3f}）")
+                    else:
+                        st.info(f"📌 **{ll_a}** 与 **{ll_b}** 无显著领先/滞后关系（峰值相关：{corr_val:.3f}，lag=0）")
+
+                    with st.expander("📋 详细数据", expanded=False):
+                        st.dataframe(ll_df.set_index("lag_months").style.format("{:.4f}"))
+
+    # ------------------------------------------------------------------
+    # Tab 5：差异性拐点
+    # ------------------------------------------------------------------
+    with tab5:
+        st.subheader("差异性拐点检测")
+        st.caption(
+            "当两个指标在同一时间窗口内运动方向相反时，视为一次差异性拐点。"
+            "这些节点往往对应市场风格切换、风险偏好逆转或宏观政策转折。"
+        )
+
+        # 使用全局指标或传统月度数据
+        use_global_div = st.radio("数据源选择", ["使用全局指标", "使用传统指数/利率"], horizontal=True, key="tab5_data_source")
+        
+        if use_global_div == "使用全局指标":
+            if not global_indicators or len(global_indicators) < 2:
+                st.warning("请先在全局指标选择中至少选择 2 个指标。")
+            else:
+                with st.spinner("⏳ 加载全局指标数据..."):
+                    try:
+                        div_data = fetch_multi_indicators(global_indicators, period=macro_period, force_refresh=force_refresh_macro)
+                    except Exception as e:
+                        st.error(f"❌ 数据加载失败: {e}")
+                        div_data = None
+                
+                if div_data is not None and not div_data.empty:
+                    div_opts = list(div_data.columns)
+                    dc1, dc2, dc3 = st.columns(3)
+                    with dc1:
+                        div_a = st.selectbox("指标 A", div_opts, index=0, key="div_a_global")
+                    with dc2:
+                        div_b = st.selectbox("指标 B", div_opts,
+                                            index=min(1, len(div_opts)-1), key="div_b_global")
+                    with dc3:
+                        div_win = st.slider("比较窗口（月）", 1, 6, 2, key="div_win_global")
+
+                    if div_a != div_b:
+                        div_df = detect_divergence_points(
+                            div_data[div_a], div_data[div_b], window=div_win
+                        )
+
+                        if div_df.empty:
+                            st.info("在选定参数下未检测到差异性拐点。")
+                        else:
+                            st.markdown(f"**检测到 {len(div_df)} 个差异性拐点：**")
+
+                            fig_div = go.Figure()
+                            for col in [div_a, div_b]:
+                                norm_col = div_data[col] / div_data[col].iloc[0] * 100
+                                fig_div.add_trace(go.Scatter(
+                                    x=norm_col.index, y=norm_col.values,
+                                    mode="lines", name=col,
+                                ))
+                            for dt in div_df.index:
+                                fig_div.add_vline(
+                                    x=dt, line=dict(color="yellow", width=1, dash="dot"),
+                                )
+                            fig_div.update_layout(
+                                template="plotly_dark", height=400,
+                                hovermode="x unified",
+                                yaxis_title="归一化指数",
+                                title=f"{div_a} vs {div_b} 差异性拐点（黄色竖线）",
+                            )
+                            st.plotly_chart(fig_div, width="stretch")
+
+                            display_df = div_df.copy()
+                            display_df["A_chg_pct"] = display_df["A_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                            display_df["B_chg_pct"] = display_df["B_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                            display_df.columns = [f"{div_a}方向", f"{div_a}变化", f"{div_b}方向", f"{div_b}变化"]
+                            st.dataframe(display_df.sort_index(ascending=False), height=350)
+        
+        else:  # 使用传统数据
+            if monthly_df.shape[1] < 2:
+                st.info("请选择至少 2 个指标。")
+            else:
+                div_opts = list(monthly_df.columns)
+                dc1, dc2, dc3 = st.columns(3)
+                with dc1:
+                    div_a = st.selectbox("指标 A", div_opts, index=0, key="div_a")
+                with dc2:
+                    div_b = st.selectbox("指标 B", div_opts,
+                                         index=min(1, len(div_opts)-1), key="div_b")
+                with dc3:
+                    div_win = st.slider("比较窗口（月）", 1, 6, 2, key="div_win")
+
+                if div_a != div_b:
+                    div_df = detect_divergence_points(
+                        monthly_df[div_a], monthly_df[div_b], window=div_win
+                    )
+
+                    if div_df.empty:
+                        st.info("在选定参数下未检测到差异性拐点。")
+                    else:
+                        st.markdown(f"**检测到 {len(div_df)} 个差异性拐点：**")
+
+                        fig_div = go.Figure()
+                        for col in [div_a, div_b]:
+                            norm_col = monthly_df[col] if col in monthly_df.columns else monthly_df[col]
+                            fig_div.add_trace(go.Scatter(
+                                x=norm_col.index, y=norm_col.values,
+                                mode="lines", name=col,
+                            ))
+                        for dt in div_df.index:
+                            fig_div.add_vline(
+                                x=dt, line=dict(color="yellow", width=1, dash="dot"),
+                            )
+                        fig_div.update_layout(
+                            template="plotly_dark", height=400,
+                            hovermode="x unified",
+                            yaxis_title="归一化指数",
+                            title=f"{div_a} vs {div_b} 差异性拐点（黄色竖线）",
+                        )
+                        st.plotly_chart(fig_div, width="stretch")
+
+                        display_df = div_df.copy()
+                        display_df["A_chg_pct"] = display_df["A_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                        display_df["B_chg_pct"] = display_df["B_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                        display_df.columns = [f"{div_a}方向", f"{div_a}变化", f"{div_b}方向", f"{div_b}变化"]
+                        st.dataframe(display_df.sort_index(ascending=False), height=350)
+            with dc3:
+                div_win = st.slider("比较窗口（月）", 1, 6, 2, key="div_win")
+
+            if div_a != div_b:
+                div_df = detect_divergence_points(
+                    monthly_df[div_a], monthly_df[div_b], window=div_win
+                )
+
+                if div_df.empty:
+                    st.info("在选定参数下未检测到差异性拐点。")
+                else:
+                    st.markdown(f"**检测到 {len(div_df)} 个差异性拐点：**")
+
+                    # 在走势图上标注拐点
+                    fig_div = go.Figure()
+                    for col in [div_a, div_b]:
+                        norm_col = monthly_norm[col] if col in monthly_norm.columns else monthly_df[col]
+                        fig_div.add_trace(go.Scatter(
+                            x=norm_col.index, y=norm_col.values,
+                            mode="lines", name=col,
+                        ))
+                    # 标注拐点位置
+                    for dt in div_df.index:
+                        fig_div.add_vline(
+                            x=dt, line=dict(color="yellow", width=1, dash="dot"),
+                        )
+                    fig_div.update_layout(
+                        template="plotly_dark", height=400,
+                        hovermode="x unified",
+                        yaxis_title="归一化指数",
+                        title=f"{div_a} vs {div_b} 差异性拐点（黄色竖线）",
+                    )
+                    st.plotly_chart(fig_div, width="stretch")
+
+                    display_df = div_df.copy()
+                    display_df["A_chg_pct"] = display_df["A_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                    display_df["B_chg_pct"] = display_df["B_chg_pct"].apply(lambda x: f"{x:.2f}%")
+                    display_df.columns = [f"{div_a}方向", f"{div_a}变化", f"{div_b}方向", f"{div_b}变化"]
+                    st.dataframe(display_df.sort_index(ascending=False), height=350)
+
+    # ------------------------------------------------------------------
+    # Tab 6：VIX 三阶段入场策略
+    # ------------------------------------------------------------------
+    with tab6:
+        st.subheader("VIX 三阶段入场策略 — 量化逻辑与历史回测")
+        st.caption(
+            "VIX > 30 时进入高企观察期，分为前期（急速飙升）、中期（极度恐慌峰值）、"
+            "后期（均值回归开始）三个阶段。统计显示后期（右侧）入场的胜率与夏普比率远优于前期（左侧）。"
+        )
+
+        ensure_vix_session_defaults()
+        saved_vix_results = load_vix_strategy_memory()
+
+        with st.expander("🗂️ VIX 回测结果库", expanded=False):
+            if saved_vix_results:
+                saved_names = sorted(saved_vix_results.keys(), reverse=True)
+                selected_saved_name = st.selectbox(
+                    "已保存方案",
+                    saved_names,
+                    key="vix_saved_result_name",
+                )
+                selected_saved_payload = saved_vix_results.get(selected_saved_name, {})
+                selected_saved_summary = selected_saved_payload.get("summary", {})
+                if selected_saved_summary:
+                    st.caption(
+                        f"最近保存：样本 {selected_saved_summary.get('sample_count', 0)} 次，"
+                        f"平均收益 {selected_saved_summary.get('avg_return', 'N/A')}%，"
+                        f"胜率 {selected_saved_summary.get('win_rate', 'N/A')}%。"
+                    )
+
+                if st.button("读取该方案", key="vix_load_result"):
+                    params = selected_saved_payload.get("params", {})
+                    asset_info = selected_saved_payload.get("asset", {})
+
+                    st.session_state["vix_spike_threshold"] = int(params.get("spike_threshold", VIX_SPIKE_THRESHOLD))
+                    st.session_state["vix_peak_threshold"] = int(params.get("peak_threshold", VIX_PEAK_THRESHOLD))
+                    st.session_state["vix_pullback_pct"] = int(params.get("pullback_pct", 10))
+                    st.session_state["vix_confirmation_days"] = int(params.get("confirmation_days", 1))
+                    st.session_state["vix_min_spike_duration"] = int(params.get("min_spike_duration", 0))
+                    st.session_state["vix_min_peak_vix"] = int(params.get("min_peak_vix", VIX_PEAK_THRESHOLD))
+                    st.session_state["vix_fwd"] = params.get("forward_window_label", "21日")
+                    st.session_state["vix_backtest_mode"] = asset_info.get("mode", "宏观指标")
+
+                    saved_asset_label = asset_info.get("label")
+                    if asset_info.get("mode") == "宏观指标":
+                        if global_indicators and saved_asset_label in global_indicators:
+                            st.session_state["vix_backtest_indicator"] = saved_asset_label
+                        elif global_indicators:
+                            st.session_state["vix_backtest_indicator"] = global_indicators[0]
+                    elif saved_asset_label:
+                        st.session_state["vix_backtest_custom"] = saved_asset_label
+
+                    st.session_state["vix_loaded_result_notice"] = f"已读取方案：{selected_saved_name}"
+                    st.rerun()
+            else:
+                st.info("当前还没有已保存的 VIX 回测结果。")
+
+        if st.session_state.get("vix_loaded_result_notice"):
+            st.success(st.session_state["vix_loaded_result_notice"])
+            del st.session_state["vix_loaded_result_notice"]
+
+        if global_indicators and st.session_state.get("vix_backtest_indicator") not in global_indicators:
+            st.session_state["vix_backtest_indicator"] = global_indicators[0]
+
+        if st.session_state.get("vix_fwd") not in ["5日", "10日", "21日", "63日"]:
+            st.session_state["vix_fwd"] = "21日"
+
+        st.markdown("##### VIX 参数调节")
+        param_col1, param_col2, param_col3 = st.columns(3)
+        with param_col1:
+            vix_spike_threshold = st.slider(
+                "Spike 阈值",
+                min_value=20,
+                max_value=50,
+                value=int(st.session_state["vix_spike_threshold"]),
+                key="vix_spike_threshold",
+                help="VIX 超过该阈值后，系统认为市场进入高波动观察期。",
+            )
+            vix_pullback_pct = st.slider(
+                "从峰值回落幅度(%)",
+                min_value=5,
+                max_value=30,
+                value=int(st.session_state["vix_pullback_pct"]),
+                key="vix_pullback_pct",
+                help="例如选择 10%，表示 VIX 从本轮峰值回落 10% 后才允许触发后期入场。",
+            )
+        with param_col2:
+            vix_peak_threshold = st.slider(
+                "Peak 阈值",
+                min_value=max(vix_spike_threshold + 1, 25),
+                max_value=80,
+                value=max(int(st.session_state["vix_peak_threshold"]), vix_spike_threshold + 1),
+                key="vix_peak_threshold",
+                help="VIX 超过该阈值后，系统把当前事件视为极端恐慌阶段。",
+            )
+            vix_confirmation_days = st.slider(
+                "回落确认天数",
+                min_value=1,
+                max_value=5,
+                value=int(st.session_state["vix_confirmation_days"]),
+                key="vix_confirmation_days",
+                help="信号不是只看一天，而是要求连续若干天满足回落条件，减少假突破。",
+            )
+        with param_col3:
+            vix_min_spike_duration = st.slider(
+                "最短事件持续天数",
+                min_value=0,
+                max_value=60,
+                value=int(st.session_state["vix_min_spike_duration"]),
+                key="vix_min_spike_duration",
+                help="过滤掉持续时间过短的 VIX 噪声事件。",
+            )
+            vix_min_peak_vix = st.slider(
+                "最低峰值 VIX 过滤",
+                min_value=max(vix_peak_threshold, 30),
+                max_value=90,
+                value=max(int(st.session_state["vix_min_peak_vix"]), vix_peak_threshold),
+                key="vix_min_peak_vix",
+                help="只有峰值达到该水平的恐慌事件才计入回测样本。",
+            )
+
+        vix_pullback_ratio = 1 - (vix_pullback_pct / 100.0)
+
+        # ---- 阶段说明表 ----
+        st.markdown("##### 三阶段定义")
+        phase_def = pd.DataFrame([
+            {
+                "阶段": "🔴 前期 (Spike)",
+                "VIX 特征": f"VIX 急升并突破 {vix_spike_threshold}",
+                "市场心理": "恐慌爆发，资金踩踏",
+                "入场风险": "极高 — 左侧交易，账面浮亏可明显扩大",
+            },
+            {
+                "阶段": "🔥 中期 (Peak)",
+                "VIX 特征": f"VIX 继续上冲并超过 {vix_peak_threshold}",
+                "市场心理": "极度绝望，强制平仓",
+                "入场风险": "高波动/高潜力 — 可能先经历最后一跌",
+            },
+            {
+                "阶段": "🟢 后期 (Cooldown)",
+                "VIX 特征": f"VIX 从峰值回落至少 {vix_pullback_pct}% 且连续确认 {vix_confirmation_days} 日",
+                "市场心理": "恐慌消退，机构回流",
+                "入场风险": "相对最优 — 右侧确认后再参与，风险收益比更清晰",
+            },
+        ])
+        st.dataframe(phase_def.set_index("阶段"), height=145)
+
+        # ---- 获取 VIX 数据 ----
+        vix_ticker = "^VIX"
+        vix_raw    = fetch_index_data([vix_ticker], period=macro_period, force_refresh=force_refresh_macro)
+
+        if vix_ticker not in vix_raw:
+            st.warning("⚠️ 无法加载 VIX 数据，请检查网络连接。")
+        else:
+            vix_close = vix_raw[vix_ticker]["close"].squeeze()
+            
+            # ---- 选择回测标的 ----
+            st.markdown("##### VIX 入场回测标的选择")
+            backtest_asset_mode = st.radio(
+                "回测资产类型",
+                ["宏观指标", "个股符号"],
+                horizontal=True,
+                key="vix_backtest_mode"
+            )
+            
+            if backtest_asset_mode == "宏观指标":
+                if not global_indicators:
+                    st.warning("请先在全局指标选择中至少选择 1 个指标。")
+                    backtest_ticker = None
+                    backtest_label = None
+                else:
+                    backtest_label = st.selectbox(
+                        "选择宏观指标",
+                        global_indicators,
+                        index=global_indicators.index(st.session_state.get("vix_backtest_indicator", global_indicators[0])),
+                        key="vix_backtest_indicator"
+                    )
+                    # 获取该指标的数据
+                    backtest_data = fetch_multi_indicators([backtest_label], period=macro_period, force_refresh=False)
+                    if backtest_data is None or backtest_data.empty:
+                        st.error(f"❌ 无法加载 {backtest_label} 数据")
+                        backtest_ticker = None
+                    else:
+                        backtest_ticker = backtest_data[backtest_label].squeeze()
+            else:
+                # 自定义个股符号
+                backtest_label = st.text_input(
+                    "输入个股符号（如 AAPL, MSFT）",
+                    value="AAPL",
+                    key="vix_backtest_custom",
+                )
+                if backtest_label:
+                    try:
+                        backtest_data_raw = fetch_index_data([backtest_label], period=macro_period, force_refresh=False)
+                        if backtest_label in backtest_data_raw:
+                            backtest_ticker = backtest_data_raw[backtest_label]["close"].squeeze()
+                        else:
+                            st.error(f"❌ 无法获取 {backtest_label} 数据，请检查符号是否正确")
+                            backtest_ticker = None
+                    except Exception as e:
+                        st.error(f"❌ 获取 {backtest_label} 数据失败: {e}")
+                        backtest_ticker = None
+                else:
+                    backtest_ticker = None
+            
+            # 也获取S&P 500作为默认对比
+            sp_ticker  = "^GSPC"
+            sp_raw     = fetch_index_data([sp_ticker],  period=macro_period, force_refresh=False)
+            sp_close   = sp_raw[sp_ticker]["close"].squeeze() if sp_ticker in sp_raw else None
+
+            # 校验回测数据并决定使用哪个价格序列
+            if sp_close is None:
+                st.warning("⚠️ 无法加载 S&P 500 数据，后续分析将被跳过。")
+                st.stop()
+            else:
+                # 选择用于计算的价格序列：优先使用选定的回测标的，否则用S&P 500
+                if backtest_ticker is not None and not backtest_ticker.empty:
+                    price_for_calc = backtest_ticker
+                    asset_label_for_display = backtest_label
+                else:
+                    price_for_calc = sp_close
+                    asset_label_for_display = "S&P 500"
+                    if backtest_ticker is None:
+                        if backtest_asset_mode == "宏观指标":
+                            st.info("🟡 未能加载选定的宏观指标，正使用 S&P 500 替代回测...")
+                        else:
+                            st.info(f"🟡 未能加载 {backtest_label}，正使用 S&P 500 替代回测...")
+
+            phase_series = classify_vix_phase(
+                vix_close,
+                spike_threshold=vix_spike_threshold,
+                peak_threshold=vix_peak_threshold,
+                pullback_ratio=vix_pullback_ratio,
+            )
+
+            fig_vix = go.Figure()
+            # 背景色块：spike=橙, peak=红, cooldown=绿
+            phase_colors = {"spike": "rgba(255,165,0,0.15)", "peak": "rgba(220,50,50,0.20)", "cooldown": "rgba(50,200,80,0.15)"}
+            # 按连续段生成矩形
+            prev_ph, seg_start = None, None
+            for dt, ph in phase_series.items():
+                if ph != prev_ph:
+                    if prev_ph and prev_ph != "normal" and seg_start is not None:
+                        fig_vix.add_vrect(
+                            x0=seg_start, x1=dt,
+                            fillcolor=phase_colors.get(prev_ph, "rgba(0,0,0,0)"),
+                            opacity=1, layer="below", line_width=0,
+                        )
+                    seg_start = dt
+                    prev_ph = ph
+            # 补最后一段
+            if prev_ph and prev_ph != "normal" and seg_start is not None:
+                fig_vix.add_vrect(
+                    x0=seg_start, x1=vix_close.index[-1],
+                    fillcolor=phase_colors.get(prev_ph, "rgba(0,0,0,0)"),
+                    opacity=1, layer="below", line_width=0,
+                )
+
+            fig_vix.add_trace(go.Scatter(
+                x=vix_close.index, y=vix_close.values,
+                mode="lines", name="VIX",
+                line=dict(color="#EF5350", width=1.5),
+            ))
+            fig_vix.add_hline(y=vix_spike_threshold, line=dict(color="orange", dash="dot"),
+                              annotation_text=f"警戒线 {vix_spike_threshold}")
+            fig_vix.add_hline(y=vix_peak_threshold,  line=dict(color="red",    dash="dot"),
+                              annotation_text=f"极度恐慌 {vix_peak_threshold}")
+            fig_vix.update_layout(
+                template="plotly_dark", height=380,
+                yaxis_title="VIX", hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig_vix, width="stretch")
+
+            # ---- 当前状态判断 ----
+            latest_vix = vix_close.iloc[-1]
+            latest_phase = phase_series.iloc[-1]
+
+            # 找本轮高点（若处于 spike/peak）
+            spikes_df = detect_vix_spikes(
+                vix_close,
+                spike_threshold=vix_spike_threshold,
+                peak_threshold=vix_peak_threshold,
+                cooldown_threshold=vix_spike_threshold,
+            )
+            current_spike_peak = None
+            if not spikes_df.empty:
+                last_spike = spikes_df.iloc[-1]
+                if last_spike["end"] is None:  # 还在进行中
+                    current_spike_peak = last_spike["peak_value"]
+
+            st.markdown("##### 当前市场状态")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("当前 VIX", f"{latest_vix:.2f}",
+                          delta=f"{latest_vix - vix_close.iloc[-2]:.2f}" if len(vix_close) > 1 else None)
+            with col_s2:
+                phase_label = {"normal": "🟦 正常", "spike": "🔴 前期(飙升)", "peak": "🔥 中期(峰值)", "cooldown": "🟢 后期(回落)"}
+                st.metric("当前阶段", phase_label.get(latest_phase, latest_phase))
+            with col_s3:
+                if current_spike_peak:
+                    trigger_level = current_spike_peak * vix_pullback_ratio
+                    st.metric("后期信号触发点", f"VIX ≤ {trigger_level:.1f}",
+                              help=f"本轮VIX峰值 {current_spike_peak:.1f} × {vix_pullback_ratio:.2f}")
+                else:
+                    st.metric("后期信号触发点", "N/A — 当前无活跃spike")
+
+            if latest_phase == "cooldown":
+                st.success("✅ **当前处于后期（Cooldown）阶段** — VIX 正在均值回归，历史数据显示此为系统性风险消退阶段，个股 Alpha 逐步恢复有效性。")
+            elif latest_phase == "peak":
+                st.error(f"🔥 **当前处于中期（Peak）阶段** — 极度恐慌区，Beta 主导一切。建议等待 VIX 从峰值回落至少 {vix_pullback_pct}% 后再考虑入场。")
+            elif latest_phase == "spike":
+                st.warning("⚠️ **当前处于前期（Spike）阶段** — VIX 正在飙升，系统性抛压最强，左侧入场需承受最大账面浮亏。")
+            else:
+                st.info("🟦 **当前 VIX 处于正常区间** — 系统性风险低，个股逻辑正常有效。")
+
+            # ---- 历史入场信号表 ----
+            st.markdown(f"##### 历史后期（Cooldown）入场信号 — {asset_label_for_display} 前瞻收益统计")
+            with st.expander("ℹ️ 前瞻窗口定义", expanded=False):
+                st.markdown(
+                    """
+前瞻窗口 = 从某一次入场信号触发当天开始，向后观察固定数量的交易日，并统计这段时间的收益表现。
+
+- 5日：偏短线反弹验证，适合看恐慌后的快速修复。
+- 10日：偏两周节奏，适合观察情绪修复是否延续。
+- 21日：约 1 个月持有周期，适合中短线波段。
+- 63日：约 1 个季度持有周期，适合验证更完整的风险偏好修复。
+
+计算方式：
+
+$$\text{前瞻收益} = \left(\frac{\text{未来价格}}{\text{入场价格}} - 1\right) \times 100\%$$
+                    """
+                )
+            fwd_days_choice = st.radio(
+                "前瞻窗口", ["5日", "10日", "21日", "63日"],
+                index=["5日", "10日", "21日", "63日"].index(st.session_state["vix_fwd"]),
+                horizontal=True,
+                key="vix_fwd",
+            )
+            fwd_map = {"5日": 5, "10日": 10, "21日": 21, "63日": 63}
+            fwd_d = fwd_map[fwd_days_choice]
+
+            signals_df = compute_vix_entry_signals(
+                vix_close, price_for_calc,
+                spike_threshold=vix_spike_threshold,
+                peak_threshold=vix_peak_threshold,
+                pullback_ratio=vix_pullback_ratio,
+                forward_windows=[5, 10, 21, 63],
+                cooldown_confirmation_days=vix_confirmation_days,
+                min_spike_duration_days=vix_min_spike_duration,
+                min_peak_vix=vix_min_peak_vix,
+            )
+
+            signal_summary = {
+                "sample_count": 0,
+                "avg_return": None,
+                "win_rate": None,
+                "best_return": None,
+                "worst_return": None,
+            }
+
+            if signals_df.empty:
+                st.info("当前周期内无入场信号。")
+            else:
+                fwd_col = f"fwd_{fwd_d}d_return"
+                display_sig = signals_df[[
+                    "spike_start", "peak_date", "peak_vix",
+                    "signal_date", "signal_vix", "entry_price", fwd_col
+                ]].copy()
+                display_sig.columns = [
+                    "Spike开始", "VIX峰值日", "峰值VIX",
+                    "入场信号日", "信号日VIX", f"{asset_label_for_display}入场价", f"{fwd_days_choice}前瞻收益(%)"
+                ]
+                ret_col = f"{fwd_days_choice}前瞻收益(%)"
+
+                def _color_ret(val):
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        return ""
+                    return "color: #66BB6A" if val > 0 else "color: #EF5350"
+
+                styled = display_sig.style.applymap(_color_ret, subset=[ret_col])
+                st.dataframe(styled, height=280)
+
+                # 胜率摘要
+                valid_rets = signals_df[fwd_col].dropna()
+                if not valid_rets.empty:
+                    win_rate = (valid_rets > 0).mean() * 100
+                    avg_ret  = valid_rets.mean()
+                    best_ret = valid_rets.max()
+                    worst_ret = valid_rets.min()
+                    signal_summary = {
+                        "sample_count": int(len(valid_rets)),
+                        "avg_return": float(avg_ret),
+                        "win_rate": float(win_rate),
+                        "best_return": float(best_ret),
+                        "worst_return": float(worst_ret),
+                    }
+
+                    sc1, sc2, sc3, sc4 = st.columns(4)
+                    sc1.metric(f"后期信号次数", len(valid_rets))
+                    sc2.metric(f"{fwd_days_choice}平均收益", f"{avg_ret:.1f}%",
+                               delta="正" if avg_ret > 0 else "负")
+                    sc3.metric("胜率", f"{win_rate:.0f}%")
+                    sc4.metric("最差单次结果", f"{worst_ret:.1f}%")
+
+                    window_snapshot_rows = []
+                    for win_label, win_days in fwd_map.items():
+                        win_col = f"fwd_{win_days}d_return"
+                        win_rets = signals_df[win_col].dropna()
+                        window_snapshot_rows.append({
+                            "持有窗口": win_label,
+                            "样本数": int(len(win_rets)),
+                            "平均收益(%)": round(win_rets.mean(), 2) if not win_rets.empty else None,
+                            "胜率(%)": round((win_rets > 0).mean() * 100, 1) if not win_rets.empty else None,
+                            "最佳结果(%)": round(win_rets.max(), 2) if not win_rets.empty else None,
+                            "最差结果(%)": round(win_rets.min(), 2) if not win_rets.empty else None,
+                        })
+
+                    st.markdown("##### 不同持有窗口表现快照")
+                    window_snapshot_df = pd.DataFrame(window_snapshot_rows)
+                    st.dataframe(
+                        window_snapshot_df.style.format(
+                            {
+                                "平均收益(%)": "{:.2f}",
+                                "胜率(%)": "{:.1f}",
+                                "最佳结果(%)": "{:.2f}",
+                                "最差结果(%)": "{:.2f}",
+                            }
+                        ),
+                        height=220,
+                    )
+
+            # ---- 三阶段收益对比 ----
+            st.markdown("##### 三阶段买入的统计对比")
+            phase_fwd_df = compute_phase_forward_returns(
+                vix_close, price_for_calc,
+                spike_threshold=vix_spike_threshold,
+                peak_threshold=vix_peak_threshold,
+                pullback_ratio=vix_pullback_ratio,
+                forward_days=fwd_d,
+            )
+            best_phase_label = None
+            if not phase_fwd_df.empty:
+                phase_fwd_display = phase_fwd_df.copy()
+                phase_fwd_display.index = [
+                    {"spike": "🔴 前期 Spike", "peak": "🔥 中期 Peak", "cooldown": "🟢 后期 Cooldown"}.get(i, i)
+                    for i in phase_fwd_display.index
+                ]
+                phase_fwd_display.columns = ["样本数", f"{fwd_days_choice}均值收益(%)", "胜率(%)", "最大亏损(%)"]
+                valid_phase_returns = phase_fwd_df["mean_return"].dropna()
+                if not valid_phase_returns.empty:
+                    best_phase_key = valid_phase_returns.idxmax()
+                    best_phase_label = {
+                        "spike": "🔴 前期 Spike",
+                        "peak": "🔥 中期 Peak",
+                        "cooldown": "🟢 后期 Cooldown",
+                    }.get(best_phase_key, best_phase_key)
+
+                fig_phase = go.Figure()
+                phases_ordered = ["🔴 前期 Spike", "🔥 中期 Peak", "🟢 后期 Cooldown"]
+                phase_bar_colors = ["#EF5350", "#FF7043", "#66BB6A"]
+                for ph, color in zip(phases_ordered, phase_bar_colors):
+                    if ph in phase_fwd_display.index:
+                        val = phase_fwd_display.loc[ph, f"{fwd_days_choice}均值收益(%)"]
+                        fig_phase.add_trace(go.Bar(
+                            name=ph, x=[ph], y=[val],
+                            marker_color=color,
+                            text=[f"{val:.1f}%"], textposition="outside",
+                        ))
+                fig_phase.add_hline(y=0, line=dict(color="gray", dash="dot"))
+                fig_phase.update_layout(
+                    template="plotly_dark", height=320,
+                    yaxis_title=f"{fwd_days_choice}前瞻均值收益 (%)",
+                    showlegend=False,
+                    title=f"VIX 三阶段：{asset_label_for_display} 买入后 {fwd_days_choice} 均值收益对比",
+                )
+                st.plotly_chart(fig_phase, width="stretch")
+                st.dataframe(phase_fwd_display.style.format(
+                    {f"{fwd_days_choice}均值收益(%)": "{:.2f}", "胜率(%)": "{:.1f}", "最大亏损(%)": "{:.2f}"}
+                ), height=160)
+
+            strategy_params = {
+                "spike_threshold": float(vix_spike_threshold),
+                "peak_threshold": float(vix_peak_threshold),
+                "pullback_pct": int(vix_pullback_pct),
+                "confirmation_days": int(vix_confirmation_days),
+                "min_spike_duration": int(vix_min_spike_duration),
+                "min_peak_vix": float(vix_min_peak_vix),
+                "forward_window_label": fwd_days_choice,
+                "forward_days": int(fwd_d),
+            }
+            strategy_plan = build_vix_trade_plan(
+                asset_label_for_display,
+                strategy_params,
+                signal_summary,
+                best_phase_label=best_phase_label,
+            )
+
+            st.markdown("##### 建议交易战略")
+            st.code(strategy_plan, language="text")
+
+            save_col1, save_col2 = st.columns([2, 1])
+            with save_col1:
+                vix_result_name = st.text_input(
+                    "保存当前结果名称",
+                    value=f"{asset_label_for_display}_VIX_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    key="vix_result_name",
+                )
+            with save_col2:
+                st.markdown("&nbsp;", unsafe_allow_html=True)
+                if st.button("一键保存当前结果", key="vix_save_result"):
+                    cleaned_result_name = vix_result_name.strip()
+                    if not cleaned_result_name:
+                        st.warning("请输入有效的保存名称。")
+                    else:
+                        phase_records = []
+                        if not phase_fwd_df.empty:
+                            phase_records = phase_fwd_df.reset_index().to_dict(orient="records")
+
+                        save_payload = {
+                            "saved_at": datetime.now().isoformat(),
+                            "asset": {
+                                "mode": backtest_asset_mode,
+                                "label": asset_label_for_display,
+                            },
+                            "params": {
+                                **strategy_params,
+                                "pullback_ratio": round(vix_pullback_ratio, 4),
+                            },
+                            "summary": {
+                                "sample_count": signal_summary["sample_count"],
+                                "avg_return": round(signal_summary["avg_return"], 2) if signal_summary["avg_return"] is not None else None,
+                                "win_rate": round(signal_summary["win_rate"], 1) if signal_summary["win_rate"] is not None else None,
+                                "best_return": round(signal_summary["best_return"], 2) if signal_summary["best_return"] is not None else None,
+                                "worst_return": round(signal_summary["worst_return"], 2) if signal_summary["worst_return"] is not None else None,
+                                "latest_vix": round(float(latest_vix), 2),
+                                "latest_phase": phase_label.get(latest_phase, latest_phase),
+                                "best_phase": best_phase_label,
+                            },
+                            "phase_comparison": phase_records,
+                            "strategy_text": strategy_plan,
+                        }
+                        save_vix_backtest_result(cleaned_result_name, save_payload)
+                        st.success(f"已保存 VIX 回测结果：{cleaned_result_name}")
+
+            # ---- 深度逻辑说明 ----
+            with st.expander("📖 深度逻辑：为什么后期入场最优？", expanded=False):
+                st.markdown("""
+**1. 均值回归的确定性**
+
+VIX 本质上是均值回归的。历史表明 VIX 很难长期维持在 30 以上（通常仅持续数周至数月）。
+VIX 开始回落 ≈ 期权权利金缩水 ≈ 市场对未来波动率预期下降：
+
+$$VIX \\propto \\text{Implied Volatility} \\propto \\text{Option Premium}$$
+
+**2. 波动率溢价的回补**
+
+高 VIX 时期，隐含波动率（IV）远高于实际波动率（RV），市场存在「过度恐慌溢价」。
+恐慌峰值过去后，IV → RV 的收敛会带动估值快速修复。
+
+**3. 历史数据支撑**
+
+| 时期 | 代表事件 | 左侧买入代价 | 右侧后期入场 |
+|------|----------|-------------|-------------|
+| 2008 年金融危机 | VIX 峰值 ~80 | 2008/9 买入再跌 40% | 2009/3 VIX 回落后 1 年涨 ~60% |
+| 2020 年疫情 | VIX 峰值 ~85 | 2/24 买入再跌 30% | 3/23 触底后 1 个月涨 ~30% |
+| 2022 年加息 | VIX 峰值 ~38 | 1 月买入再跌 25% | 10 月底均值回归后 1 年涨 ~25% |
+
+**4. 对个股的逻辑影响**
+
+在高 VIX 阶段，系统性风险（Beta）主导一切——即使个股基本面优秀，
+也会被市场的泥石流所淹没。**只有当 VIX 后期开始，个股的 Alpha 才会重新生效**。
+
+**建议的回测入场过滤器：**
+```
+if VIX > 30:
+    status = "高级观察状态"
+    暂停个股信号执行
+    if VIX < 0.90 * max(VIX_in_current_spike):
+        status = "后期信号触发"
+        允许执行个股入场逻辑
+```
+""")
+
+    st.stop()  # 宏观模式下不渲染回测界面
 
 # =========== 侧边栏：基本配置 ===========
 st.sidebar.header("📊 基本配置 | Basic Configuration")
